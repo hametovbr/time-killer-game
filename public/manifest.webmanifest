@@ -1,7 +1,7 @@
 {
-  "name": "Mob Cannon",
-  "short_name": "Mob Cannon",
-  "description": "Честная игра «как в рекламе»: пушка, толпа и ворота-множители.",
+  "name": "Lane Squad",
+  "short_name": "Lane Squad",
+  "description": "Честная игра «как в рекламе»: отряд, три полосы, ворота-множители.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

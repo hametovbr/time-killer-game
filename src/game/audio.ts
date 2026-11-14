@@ -58,51 +58,54 @@ export class Sfx {
     return performance.now();
   }
 
-  shot() {
+  shot(weapon: number) {
     const n = this.now();
-    if (n - this.lastShot < 60) return;
+    if (n - this.lastShot < (weapon >= 4 ? 70 : 50)) return;
     this.lastShot = n;
-    this.tone(320 + Math.random() * 40, 0.05, 'square', 0.04, 180);
+    if (weapon === 5) this.tone(1400, 0.06, 'sine', 0.035, 600);
+    else if (weapon === 2) this.noise(0.07, 0.18, 700);
+    else this.tone(240 + weapon * 40 + Math.random() * 30, 0.045, 'square', 0.03, 120);
   }
-  gate(mult: number, good: boolean) {
+  gate(good: boolean) {
+    if (good) {
+      this.tone(523, 0.08, 'triangle', 0.12);
+      this.tone(784, 0.14, 'triangle', 0.12, 1047, 0.06);
+    } else this.tone(300, 0.25, 'sawtooth', 0.08, 110);
+  }
+  tick() {
     const n = this.now();
-    if (n - this.lastGate < 70) return;
+    if (n - this.lastGate < 60) return;
     this.lastGate = n;
-    if (good) this.tone(440 + mult * 110, 0.09, 'triangle', 0.09, 700 + mult * 140);
-    else this.tone(300, 0.12, 'sawtooth', 0.05, 140);
+    this.tone(1200 + Math.random() * 200, 0.03, 'square', 0.02);
   }
   pop() {
     const n = this.now();
     if (n - this.lastPop < 45) return;
     this.lastPop = n;
-    this.noise(0.06, 0.25, 900 + Math.random() * 900);
+    this.noise(0.07, 0.25, 600 + Math.random() * 700);
   }
-  enemyBaseHit() {
+  hurt() {
     const n = this.now();
-    if (n - this.lastHit < 80) return;
+    if (n - this.lastHit < 70) return;
     this.lastHit = n;
-    this.tone(110, 0.08, 'sine', 0.18, 70);
+    this.tone(180, 0.12, 'sawtooth', 0.08, 80);
   }
-  playerBaseHit() {
-    this.tone(160, 0.25, 'sawtooth', 0.12, 60);
+  thud() {
+    const n = this.now();
+    if (n - this.lastHit < 90) return;
+    this.lastHit = n;
+    this.tone(100, 0.07, 'sine', 0.12, 60);
   }
-  champReady() {
-    this.tone(523, 0.1, 'triangle', 0.12);
-    this.tone(784, 0.16, 'triangle', 0.12, undefined, 0.09);
+  powerup() {
+    [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, 0.09, 'square', 0.05, undefined, i * 0.05));
   }
-  champLaunch() {
-    this.tone(90, 0.4, 'sawtooth', 0.15, 200);
+  roar() {
+    this.tone(70, 0.7, 'sawtooth', 0.14, 45);
+    this.noise(0.6, 0.25, 220);
   }
   boom() {
     this.noise(0.35, 0.6, 300);
     this.tone(70, 0.4, 'sine', 0.3, 35);
-  }
-  coin() {
-    const n = this.now();
-    if (n - this.lastPop < 50) return;
-    this.lastPop = n;
-    this.tone(988, 0.06, 'square', 0.04);
-    this.tone(1319, 0.1, 'square', 0.04, undefined, 0.05);
   }
   win() {
     [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.25, 'triangle', 0.12, undefined, i * 0.1));

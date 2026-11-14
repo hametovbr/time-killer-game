@@ -1,57 +1,54 @@
-import { W, CANNON_Y } from './constants';
+import { LANES, RUN_SPEED } from './constants';
 import type { Sim, Input } from './sim';
 
-/**
- * Simple autoplayer used for balance simulation and the menu attract-mode.
- * skill 0..1: 1 = always aims at the best path, 0 = random wandering.
- */
+/** Autoplayer for balance simulation and the menu backdrop. skill 0..1. */
 export class Bot {
-  private target = W / 2;
-  private retarget = 0;
+  private lane = 1;
+  private timer = 0;
   constructor(private skill = 0.8) {}
 
   think(sim: Sim, dt: number): Input {
-    this.retarget -= dt;
-    if (this.retarget <= 0) {
-      this.retarget = 0.35 + (1 - this.skill) * 0.6;
-      this.target = this.choose(sim);
+    this.timer -= dt;
+    if (this.timer <= 0) {
+      this.timer = 0.25 + (1 - this.skill) * 0.5;
+      this.lane = Math.random() > this.skill ? Math.floor(Math.random() * 3) : this.choose(sim);
     }
-    return { x: this.target, fire: true, champion: sim.champReady };
+    return { lane: this.lane };
   }
 
   private choose(sim: Sim): number {
-    if (Math.random() > this.skill) return 30 + Math.random() * (W - 60);
-    let bestX = W / 2;
+    const dps = Math.max(0.1, sim.currentDps);
+    let bestLane = sim.lane;
     let bestScore = -Infinity;
-    for (let x = 30; x <= W - 30; x += 10) {
-      let score = 0;
-      // Path value through gates: look at gates in order bottom->top, the unit column widens after each mul gate.
-      const gates = [...sim.gates].sort((a, b) => b.y - a.y);
-      let col = x;
-      let colW = 6;
-      for (const g of gates) {
-        const overlap = Math.max(0, Math.min(col + colW, g.cx + g.w / 2) - Math.max(col - colW, g.cx - g.w / 2));
-        if (overlap <= 0) continue;
-        const frac = Math.min(1, overlap / (colW * 2));
-        const v = g.kind === 'mul' ? Math.log(g.n) : -Math.log(g.n) * 1.2;
-        score += v * frac;
-        if (g.kind === 'mul') {
-          col = g.cx;
-          colW = g.w * 0.4;
-        }
+    // Next gate row ahead.
+    const next = sim.gates.filter((g) => !g.done && g.z > sim.dist).sort((a, b) => a.z - b.z);
+    const rowZ = next.length ? next[0].z : sim.dist + 600;
+    for (let lane = 0; lane < 3; lane++) {
+      let count = sim.count;
+      // Enemies in this lane before the gate row: those we can't shoot down in time hit us.
+      let budget = dps * ((rowZ - sim.dist) / (RUN_SPEED + 40));
+      const threats = sim.enemies
+        .filter((e) => e.alive && Math.abs(e.x - LANES[lane]) < 50 && e.z > sim.dist && e.z < rowZ + 40)
+        .sort((a, b) => a.z - b.z);
+      for (const e of threats) {
+        if (budget >= e.hp) budget -= e.hp;
+        else count -= e.power;
       }
-      for (const w of sim.walls) if (w.hp > 0 && Math.abs(x - w.x) < w.w / 2) score -= 0.4;
-      for (const s of sim.spinners) if (Math.abs(x - s.x) < s.len / 2) score -= 0.5;
-      // Defend: enemies close to our base in this column.
-      for (const e of sim.enemies) {
-        if (e.y > CANNON_Y - 300 && Math.abs(e.x - x) < 40) score += e.giant ? 0.4 : 0.1;
+      const g = next.find((x) => x.z === rowZ && x.lane === lane);
+      if (g) {
+        if (g.op === '+' || g.op === '-') count += g.val;
+        else if (g.op === 'x') count *= g.val;
+        else count = Math.ceil(count / g.val);
       }
-      score -= Math.abs(x - sim.cannonX) * 0.0015;
+      let score = Math.log(Math.max(0.5, count));
+      const crate = sim.crates.find((c) => c.alive && c.lane === lane && c.z > sim.dist && c.z < sim.dist + 500);
+      if (crate && dps * 2.5 > crate.hp) score += 0.35;
+      score -= Math.abs(lane - sim.lane) * 0.02;
       if (score > bestScore) {
         bestScore = score;
-        bestX = x;
+        bestLane = lane;
       }
     }
-    return bestX;
+    return bestLane;
   }
 }

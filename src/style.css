@@ -53,12 +53,6 @@ canvas {
   font-size: 15px;
   backdrop-filter: blur(4px);
 }
-.pill.dim {
-  opacity: 0.85;
-}
-.pill.dim::before {
-  content: '🔵 ';
-}
 .pill.coin::before {
   content: '🪙 ';
 }
@@ -74,54 +68,46 @@ canvas {
   font-size: 13px;
   cursor: pointer;
 }
-#hud-timer {
+#hud-progress {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 54px);
   left: 50%;
   transform: translateX(-50%);
-  font-size: 28px;
-  font-weight: 900;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+  width: min(70vw, 300px);
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(10, 12, 30, 0.55);
+  overflow: hidden;
   pointer-events: none;
   z-index: 5;
 }
-
-#btn-champ {
-  position: fixed;
-  right: max(14px, calc(50vw - 230px));
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
-  width: 66px;
-  height: 66px;
-  border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.85);
-  background: conic-gradient(#ffd54a calc(var(--p, 0) * 1turn), rgba(10, 12, 30, 0.7) 0);
-  font-size: 28px;
-  cursor: pointer;
-  z-index: 6;
-  transition: transform 0.12s;
-  padding: 0;
-}
-#btn-champ span {
-  display: grid;
-  place-items: center;
-  width: 100%;
+#hud-progress div {
   height: 100%;
-  filter: grayscale(1) opacity(0.7);
+  width: 0;
+  background: linear-gradient(90deg, #45b4ff, #ffd54a);
 }
-#btn-champ.ready {
-  animation: wiggle 0.6s ease-in-out infinite;
-  box-shadow: 0 0 22px #ffd54a;
+#hud-gear {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  background: rgba(10, 12, 30, 0.7);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-weight: 800;
+  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
 }
-#btn-champ.ready span {
-  filter: none;
+#hud-gear.pop {
+  animation: gearPop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1);
 }
-@keyframes wiggle {
-  0%,
-  100% {
-    transform: scale(1) rotate(0);
-  }
-  50% {
-    transform: scale(1.1) rotate(-6deg);
+@keyframes gearPop {
+  from {
+    transform: translateX(-50%) scale(1.5);
+    background: #ffd54a;
+    color: #3a2a00;
   }
 }
 
@@ -142,7 +128,7 @@ canvas {
   animation: bob 1.2s ease-in-out infinite;
 }
 #intro::before {
-  content: '👆';
+  content: '👈 👆 👉';
   display: block;
   font-size: 30px;
   margin-bottom: 4px;

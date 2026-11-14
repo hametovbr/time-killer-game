@@ -1,5 +1,5 @@
 import './style.css';
-import { W } from './game/constants';
+import { W, SQUAD_Y } from './game/constants';
 import { generateLevel, type LevelDef } from './game/levels';
 import { Sim, type GameEvent, type Input } from './game/sim';
 import { Renderer } from './game/render';
@@ -7,16 +7,7 @@ import { Fx } from './game/fx';
 import { Sfx } from './game/audio';
 import { Bot } from './game/bot';
 import { loadSave, writeSave, resetSave, type SaveData } from './game/save';
-import {
-  UPGRADES,
-  fireRate,
-  playerBaseHp,
-  championShots,
-  upgradeCost,
-  starsFor,
-  levelReward,
-  bonusReward,
-} from './game/balance';
+import { UPGRADES, WEAPONS, RANK_NAMES, startSquad, damageMul, upgradeCost, starsFor, levelReward } from './game/balance';
 
 type Mode = 'menu' | 'playing' | 'paused' | 'result';
 
@@ -25,9 +16,9 @@ const canvas = $<HTMLCanvasElement>('game');
 const hud = $('hud');
 const hudLevel = $('hud-level');
 const hudCoins = $('hud-coins');
-const hudUnits = $('hud-units');
-const hudTimer = $('hud-timer');
-const btnChamp = $<HTMLButtonElement>('btn-champ');
+const hudProgress = $('hud-progress');
+const hudProgressBar = hudProgress.firstElementChild as HTMLElement;
+const hudGear = $('hud-gear');
 const btnPause = $<HTMLButtonElement>('btn-pause');
 const intro = $('intro');
 const screen = $('screen');
@@ -42,46 +33,53 @@ fx.reduceShake = save.settings.reduceShake;
 let mode: Mode = 'menu';
 let sim: Sim;
 let level: LevelDef;
-let bot: Bot | null = null; // attract-mode autoplayer for the menu backdrop
+let bot: Bot | null = null; // autoplayer behind the menu
 let resultTimer = 0;
 let resultShown = false;
+let gearKey = '';
+// ?autoplay — the bot plays for you (handy for demos and screenshots).
+const autoplay = new URLSearchParams(location.search).has('autoplay') ? new Bot(0.95) : null;
 
-// ---------- Input ----------
-const input: Input = { x: null, fire: false, champion: false };
-const keys = new Set<string>();
+// ---------- Input: put your finger where you want the squad ----------
+const input: Input = { lane: null };
 let pointerDown = false;
+
+const laneFromClientX = (cx: number) => {
+  const x = renderer.toWorldX(cx);
+  return x < W / 3 ? 0 : x < (2 * W) / 3 ? 1 : 2;
+};
 
 canvas.addEventListener('pointerdown', (e) => {
   sfx.unlock();
   if (mode !== 'playing') return;
   pointerDown = true;
   canvas.setPointerCapture(e.pointerId);
-  input.x = renderer.toWorldX(e.clientX);
+  input.lane = laneFromClientX(e.clientX);
   hideIntro();
 });
 canvas.addEventListener('pointermove', (e) => {
   if (mode !== 'playing' || !pointerDown) return;
-  input.x = renderer.toWorldX(e.clientX);
+  input.lane = laneFromClientX(e.clientX);
 });
-const release = () => {
-  pointerDown = false;
-};
+const release = () => (pointerDown = false);
 canvas.addEventListener('pointerup', release);
 canvas.addEventListener('pointercancel', release);
 
 window.addEventListener('keydown', (e) => {
   sfx.unlock();
-  keys.add(e.code);
-  if (mode === 'playing') {
-    if (e.code === 'KeyE' || e.code === 'Enter') input.champion = true;
-    if (e.code === 'Escape' || e.code === 'KeyP') pause();
-    if (['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD', 'Space'].includes(e.code)) hideIntro();
-  }
-  if (e.code === 'Space') e.preventDefault();
+  if (mode !== 'playing') return;
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+    input.lane = Math.max(0, (input.lane ?? sim.lane) - 1);
+    hideIntro();
+  } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+    input.lane = Math.min(2, (input.lane ?? sim.lane) + 1);
+    hideIntro();
+  } else if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
+    input.lane = Number(e.code.slice(-1)) - 1;
+    hideIntro();
+  } else if (e.code === 'Escape' || e.code === 'KeyP') pause();
 });
-window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => {
-  keys.clear();
   pointerDown = false;
   if (mode === 'playing') pause();
 });
@@ -89,33 +87,21 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && mode === 'playing') pause();
 });
 window.addEventListener('resize', () => renderer.resize());
-
-btnChamp.addEventListener('pointerdown', (e) => {
-  e.stopPropagation();
-  sfx.unlock();
-  input.champion = true;
-});
 btnPause.addEventListener('click', () => pause());
-
-function readKeyboard(dt: number) {
-  const left = keys.has('ArrowLeft') || keys.has('KeyA');
-  const right = keys.has('ArrowRight') || keys.has('KeyD');
-  if (left || right) {
-    const base = input.x ?? sim.cannonX;
-    input.x = Math.max(0, Math.min(W, base + (right ? 1 : -1) * 420 * dt));
-  }
-  input.fire = pointerDown || keys.has('Space') || left || right;
-}
 
 // ---------- Game flow ----------
 function simConfig(n: number) {
   const fails = save.fails[n] ?? 0;
   return {
-    fireRate: fireRate(save.upgrades.fire),
-    playerBaseHp: playerBaseHp(save.upgrades.hp),
-    championShots: championShots(save.upgrades.champ),
-    enemyScale: Math.max(0.6, 1 - fails * 0.1),
+    startCount: startSquad(save.upgrades.squad),
+    startWeapon: save.upgrades.weapon,
+    dmgMul: damageMul(save.upgrades.damage),
+    ease: Math.max(0.6, 1 - fails * 0.1),
   };
+}
+
+function levelLabel(n: number, l: LevelDef) {
+  return l.type === 'boss' ? `👑 Босс ${n}` : `Уровень ${n}`;
 }
 
 function startLevel(n: number) {
@@ -126,16 +112,12 @@ function startLevel(n: number) {
   mode = 'playing';
   resultShown = false;
   resultTimer = 0;
-  input.x = null;
-  input.fire = false;
-  input.champion = false;
+  input.lane = null;
   pointerDown = false;
+  gearKey = '';
   screen.classList.add('hidden');
-  hud.classList.remove('hidden');
-  hudLevel.textContent =
-    level.type === 'boss' ? `👑 Босс ${n}` : level.type === 'bonus' ? `💰 Бонус ${n}` : `Уровень ${n}`;
-  btnChamp.classList.toggle('hidden', !level.champion);
-  hudTimer.classList.toggle('hidden', level.type !== 'bonus');
+  for (const el of [hud, hudProgress, hudGear]) el.classList.remove('hidden');
+  hudLevel.textContent = levelLabel(n, level);
   if (level.intro) {
     intro.textContent = level.intro;
     intro.classList.remove('hidden');
@@ -152,6 +134,10 @@ function startAttract() {
 
 function hideIntro() {
   intro.classList.add('hidden');
+}
+
+function hideHud() {
+  for (const el of [hud, hudProgress, hudGear, intro]) el.classList.add('hidden');
 }
 
 function pause() {
@@ -176,76 +162,74 @@ function vibrate(ms: number | number[]) {
   }
 }
 
+const screenY = (z: number) => SQUAD_Y - (z - sim.dist);
+
 function handleEvents(events: GameEvent[], audible: boolean) {
   for (const e of events) {
     switch (e.t) {
-      case 'shot':
-        if (audible) sfx.shot();
+      case 'volley':
+        if (audible) sfx.shot(e.weapon);
         break;
       case 'gate':
-        fx.text(e.x, e.y - 20, e.label, e.good ? '#b6ffcf' : '#ffb3b3', 20 + Math.min(e.n, 5) * 2);
-        if (audible) sfx.gate(e.n, e.good);
-        break;
-      case 'pop':
-        fx.burst(e.x, e.y, e.enemy ? '#ff8a98' : '#8fd3ff', 3, 70, 2.2);
-        if (audible) sfx.pop();
-        break;
-      case 'enemyBaseHit':
-        fx.enemyBasePunch = Math.min(1, fx.enemyBasePunch + (e.dmg > 1 ? 1 : 0.25));
-        fx.burst(e.x, 100, '#ffe36b', e.dmg > 1 ? 30 : 2, e.dmg > 1 ? 200 : 60);
-        if (e.dmg > 1) {
-          fx.text(e.x, 120, `-${e.dmg}`, '#ffe36b', 30);
-          fx.addShake(9);
-          if (audible) sfx.boom();
-        } else {
-          fx.addShake(0.6);
-          if (audible) sfx.enemyBaseHit();
-        }
-        break;
-      case 'playerBaseHit':
-        fx.playerBasePunch = 1;
-        fx.addShake(4);
-        fx.burst(e.x, 672, '#ff6b6b', 8, 120);
-        fx.flash = 0.35;
-        fx.flashColor = '#ff2a2a';
+        fx.text(e.x, SQUAD_Y - 50, e.delta >= 0 ? `+${e.delta}` : `${e.delta}`, e.good ? '#b6f0ff' : '#ffb3b3', 32);
+        fx.burst(e.x, SQUAD_Y - 20, e.good ? '#7fd0ff' : '#ff7a7a', 24, 170, 3);
+        fx.flash = 0.25;
+        fx.flashColor = e.good ? '#9fdcff' : '#ff4a4a';
+        if (!e.good) fx.addShake(5);
         if (audible) {
-          sfx.playerBaseHit();
-          vibrate(30);
+          sfx.gate(e.good);
+          if (!e.good) vibrate(40);
         }
         break;
-      case 'champReady':
-        if (audible) sfx.champReady();
+      case 'gateShot':
+        fx.burst(e.x, screenY(e.z) - 20, '#ffffff', 2, 60, 2);
+        if (audible) sfx.tick();
         break;
-      case 'champLaunch':
-        fx.addShake(5);
-        fx.burst(e.x, 600, '#ffd54a', 24, 160, 3);
+      case 'hit':
+        fx.burst(e.x, screenY(e.z), e.kill ? '#9be36a' : '#ffe36b', e.kill ? (e.big ? 24 : 7) : 2, e.kill ? 120 : 50, e.kill ? 3 : 2);
+        if (e.kill && e.big) {
+          fx.addShake(5);
+          fx.addHitStop(60);
+        }
+        if (audible && e.kill) sfx.pop();
+        break;
+      case 'squadHit':
+        fx.burst(e.x, SQUAD_Y, '#ff6b6b', 6 + e.lost, 130, 2.6);
+        fx.text(e.x + (Math.random() - 0.5) * 30, SQUAD_Y - 30, `-${e.lost}`, '#ff8080', 20);
+        fx.addShake(2 + Math.min(6, e.lost));
         if (audible) {
-          sfx.champLaunch();
-          vibrate(40);
+          sfx.hurt();
+          vibrate(25);
         }
         break;
-      case 'champHit':
-        fx.addHitStop(80);
-        fx.addShake(7);
-        fx.burst(e.x, e.y, '#ffffff', 18, 180, 3);
+      case 'crateHit':
+        fx.burst(e.x, screenY(e.z) - 26, '#e0b070', 2, 70, 2);
+        if (audible) sfx.tick();
         break;
-      case 'wallBreak':
-        fx.burst(e.x, e.y, '#c9cff0', 40, 220, 3.5);
+      case 'crateOpen':
+        fx.burst(e.x, screenY(e.z) - 26, e.kind === 'weapon' ? '#ffd54a' : '#c0a0ff', 40, 220, 3.5);
+        fx.text(W / 2, SQUAD_Y - 110, e.label, '#ffd54a', 30);
         fx.addShake(6);
-        fx.text(e.x, e.y, 'БАХ!', '#fff', 26);
-        if (audible) sfx.boom();
+        fx.addHitStop(70);
+        if (audible) {
+          sfx.powerup();
+          vibrate([20, 40, 20]);
+        }
         break;
-      case 'coin':
-        fx.burst(e.x, 96, '#ffd54a', 4, 90, 2.5);
-        if (audible) sfx.coin();
+      case 'bossArrive':
+        if (audible) sfx.roar();
+        break;
+      case 'bossHit':
+        fx.burst(e.x, screenY(sim.boss.z) - 60, '#ffe36b', 1, 80, 2.5);
+        if (audible) sfx.thud();
         break;
       case 'win':
         if (!audible) break;
-        fx.addHitStop(120);
+        fx.addHitStop(140);
         fx.addShake(12);
         fx.flash = 0.8;
         fx.flashColor = '#fff6c0';
-        for (let i = 0; i < 6; i++) fx.burst(60 + i * 56, 60, i % 2 ? '#ffd54a' : '#ff6b7d', 30, 260, 3.5);
+        for (let i = 0; i < 6; i++) fx.burst(60 + i * 56, screenY(sim.boss.z) - 60, i % 2 ? '#ffd54a' : '#ff6b7d', 30, 260, 3.5);
         sfx.boom();
         setTimeout(() => sfx.win(), 250);
         vibrate([40, 60, 80]);
@@ -262,30 +246,37 @@ function handleEvents(events: GameEvent[], audible: boolean) {
 
 function updateHud() {
   hudCoins.textContent = String(save.coins);
-  hudUnits.textContent = String(sim.units.length);
-  btnChamp.style.setProperty('--p', String(sim.champProgress));
-  btnChamp.classList.toggle('ready', sim.champReady);
-  if (level.type === 'bonus') hudTimer.textContent = `⏱ ${sim.timeLeft.toFixed(1)}`;
+  hudProgressBar.style.width = `${sim.progress * 100}%`;
+  const key = `${sim.weapon}-${sim.rank}`;
+  if (key !== gearKey) {
+    const w = WEAPONS[sim.weapon];
+    hudGear.textContent = `${w.icon} ${w.name} · ⭐ ${RANK_NAMES[sim.rank]}`;
+    if (gearKey) {
+      hudGear.classList.remove('pop');
+      void hudGear.offsetWidth;
+      hudGear.classList.add('pop');
+    }
+    gearKey = key;
+  }
 }
 
 function finishLevel() {
   const n = level.n;
   const won = sim.state === 'won';
   save.stats.played++;
-  save.stats.unitsFired += sim.stats.fired;
-  save.stats.bestPeak = Math.max(save.stats.bestPeak, sim.stats.peakUnits);
+  save.stats.kills += sim.stats.kills;
+  save.stats.bestPeak = Math.max(save.stats.bestPeak, sim.peak);
   let reward: number;
   let stars = 0;
   if (won) {
     save.stats.won++;
-    stars = level.type === 'bonus' ? 3 : starsFor(sim.playerHp, sim.playerHpMax);
-    reward = level.type === 'bonus' ? bonusReward(sim.collected, save.upgrades.income) : levelReward(n, stars, save.upgrades.income);
+    stars = starsFor(sim.count, sim.peak);
+    reward = levelReward(n, stars, sim.count, save.upgrades.income);
     save.stars[n] = Math.max(save.stars[n] ?? 0, stars);
     delete save.fails[n];
     if (save.level === n) save.level = n + 1;
   } else {
-    const dealt = 1 - sim.enemyHp / Math.max(1, sim.enemyHpMax);
-    reward = Math.max(5, Math.round(levelReward(n, 1, save.upgrades.income) * 0.35 * dealt));
+    reward = Math.max(5, Math.round(levelReward(n, 1, 0, save.upgrades.income) * 0.4 * sim.progress));
     save.fails[n] = (save.fails[n] ?? 0) + 1;
   }
   save.coins += reward;
@@ -306,9 +297,6 @@ screen.addEventListener('click', (e) => {
   const act = target.dataset.act!;
   switch (act) {
     case 'play':
-      sfx.click();
-      startLevel(save.level);
-      break;
     case 'next':
       sfx.click();
       startLevel(save.level);
@@ -373,30 +361,24 @@ screen.addEventListener('click', (e) => {
   }
 });
 
-function affordableUpgrades(): number {
-  return UPGRADES.filter((u) => save.upgrades[u.id] < u.max && save.coins >= upgradeCost(u, save.upgrades[u.id])).length;
-}
+const affordableUpgrades = () =>
+  UPGRADES.filter((u) => save.upgrades[u.id] < u.max && save.coins >= upgradeCost(u, save.upgrades[u.id])).length;
 
 function showMenu() {
   mode = 'menu';
-  hud.classList.add('hidden');
-  btnChamp.classList.add('hidden');
-  hudTimer.classList.add('hidden');
-  intro.classList.add('hidden');
+  hideHud();
   startAttract();
   const n = save.level;
-  const t = generateLevel(n).type;
-  const label = t === 'boss' ? `👑 Босс ${n}` : t === 'bonus' ? `💰 Бонус ${n}` : `Уровень ${n}`;
   const can = affordableUpgrades();
   const totalStars = Object.values(save.stars).reduce((a, b) => a + b, 0);
   showPanel(`
-    <div class="title">MOB<br>CANNON</div>
+    <div class="title">LANE<br>SQUAD</div>
     <div class="subtitle">та самая игра из рекламы — только честная</div>
     <div class="coins-big">🪙 ${save.coins} &nbsp; ⭐ ${totalStars}</div>
-    <button class="btn big" data-act="play">▶ ${label}</button>
+    <button class="btn big" data-act="play">▶ ${levelLabel(n, generateLevel(n))}</button>
     <div class="row">
       <button class="btn blue" data-act="upgrades">⬆ Улучшения${can ? ` (${can})` : ''}</button>
-      <button class="btn grey" data-act="settings">⚙</button>
+      <button class="btn grey" data-act="settings" style="flex:0 0 64px">⚙</button>
     </div>
     <div class="small">Без рекламы. Без доната. Прогресс хранится в браузере.</div>
   `);
@@ -404,19 +386,16 @@ function showMenu() {
 
 function showResult(won: boolean, stars: number, reward: number) {
   mode = 'result';
-  hud.classList.add('hidden');
-  btnChamp.classList.add('hidden');
-  hudTimer.classList.add('hidden');
+  hideHud();
   const can = affordableUpgrades();
   if (won) {
-    const isBonus = level.type === 'bonus';
     showPanel(`
       ${level.type === 'boss' ? '<div class="badge">БОСС ПОВЕРЖЕН</div>' : ''}
-      <h2>${isBonus ? 'Копилка полна!' : 'Победа!'}</h2>
+      <h2>Победа!</h2>
       <div class="stars">${[1, 2, 3].map((i) => `<span data-s="${i}">⭐</span>`).join('')}</div>
       <div class="reward">+${reward} 🪙</div>
-      ${isBonus ? `<div class="stat">Собрано юнитов: ${sim.collected}</div>` : ''}
-      <div class="stat">Выстрелов: ${sim.stats.fired} · Пик толпы: ${sim.stats.peakUnits} · Врагов: ${sim.stats.killed}</div>
+      <div class="stat">Отряд: ${sim.count} (пик ${sim.peak}) · Зомби: ${sim.stats.kills}</div>
+      <div class="stat">${WEAPONS[sim.weapon].icon} ${WEAPONS[sim.weapon].name} · ⭐ ${RANK_NAMES[sim.rank]}</div>
       <button class="btn big" data-act="next">Дальше ▶</button>
       <div class="row">
         <button class="btn blue" data-act="upgrades" data-back="result">⬆ Улучшения${can ? ` (${can})` : ''}</button>
@@ -430,10 +409,10 @@ function showResult(won: boolean, stars: number, reward: number) {
   } else {
     const fails = save.fails[level.n] ?? 0;
     showPanel(`
-      <h2>База пала 💥</h2>
-      <div class="stat">Крепость врага: осталось ${Math.ceil(sim.enemyHp)} из ${sim.enemyHpMax}</div>
+      <h2>Отряд пал 💀</h2>
+      <div class="stat">Пройдено трассы: ${Math.round(sim.progress * 100)}% · Пик отряда: ${sim.peak}</div>
       <div class="reward">+${reward} 🪙</div>
-      ${fails >= 1 ? `<div class="stat">Враги стали чуть слабее (−${Math.min(40, fails * 10)}%)</div>` : ''}
+      ${fails >= 1 ? `<div class="stat">Враги стали слабее (−${Math.min(40, fails * 10)}% HP)</div>` : ''}
       ${can ? `<div class="stat">💡 Доступно улучшений: ${can}</div>` : ''}
       <button class="btn big" data-act="retry">Ещё раз ↻</button>
       <div class="row">
@@ -485,10 +464,10 @@ function showSettings() {
     ${t('vibration', '📳 Вибрация')}
     ${t('reduceShake', '🫨 Меньше тряски')}
     <div class="stat" style="margin-top:12px">Сыграно: ${s.played} · Побед: ${s.won}</div>
-    <div class="stat">Выстрелов всего: ${s.unitsFired} · Рекорд толпы: ${s.bestPeak}</div>
+    <div class="stat">Зомби всего: ${s.kills} · Рекорд отряда: ${s.bestPeak}</div>
     <button class="btn red" data-act="reset">Сбросить прогресс</button>
     <button class="btn grey" data-act="menu">Назад</button>
-    <div class="small">Управление: зажми и веди пальцем/мышью. ПК: ←/→ или A/D, пробел — огонь, E — чемпион.</div>
+    <div class="small">Управление: держи палец/мышь над нужной полосой. ПК: ←/→ (A/D) или 1/2/3, Esc — пауза.</div>
   `);
 }
 
@@ -503,29 +482,29 @@ function frame(now: number) {
   last = now;
   time += dt;
 
-  if (mode === 'playing' || mode === 'menu' || mode === 'result') {
-    if (fx.hitStop > 0) {
-      fx.hitStop -= dt;
-    } else {
+  if (mode !== 'paused') {
+    if (fx.hitStop > 0) fx.hitStop -= dt;
+    else {
       acc += dt;
       let steps = 0;
       while (acc >= STEP && steps < 5) {
         acc -= STEP;
         steps++;
-        let inp: Input;
-        if (mode === 'menu' && bot) inp = bot.think(sim, STEP);
-        else if (mode === 'playing') {
-          readKeyboard(STEP);
-          inp = input;
-        } else inp = { x: null, fire: false, champion: false };
+        const inp: Input =
+          mode === 'menu' && bot
+            ? bot.think(sim, STEP)
+            : mode === 'playing'
+              ? autoplay
+                ? autoplay.think(sim, STEP)
+                : input
+              : { lane: null };
         sim.step(STEP, inp);
-        input.champion = false;
         handleEvents(sim.drainEvents(), mode === 'playing');
         if (mode === 'menu' && sim.state !== 'playing') startAttract();
       }
       if (acc > STEP * 5) acc = 0;
     }
-    fx.update(dt);
+    fx.update(dt, sim.state === 'playing' ? sim.speed : 0);
   }
 
   if (mode === 'playing') {
@@ -546,7 +525,6 @@ function frame(now: number) {
 showMenu();
 requestAnimationFrame(frame);
 
-// PWA: offline + install to home screen.
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {});

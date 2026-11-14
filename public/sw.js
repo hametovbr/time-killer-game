@@ -1,5 +1,5 @@
 // Network-first for navigations (always get the latest build), cache-first for hashed assets.
-const CACHE = 'mobcannon-v1';
+const CACHE = 'lanesquad-v1';
 self.addEventListener('install', (e) => {
   self.skipWaiting();
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html', './icon.svg', './manifest.webmanifest']).catch(() => {})));

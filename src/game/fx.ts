@@ -29,8 +29,6 @@ export class Fx {
   flashColor = '#fff';
   hitStop = 0;
   reduceShake = false;
-  enemyBasePunch = 0;
-  playerBasePunch = 0;
 
   burst(x: number, y: number, color: string, count: number, speed = 90, size = 2.5) {
     for (let i = 0; i < count && this.particles.length < MAX_PARTICLES; i++) {
@@ -54,24 +52,23 @@ export class Fx {
     this.hitStop = Math.max(this.hitStop, ms / 1000);
   }
 
-  update(dt: number) {
+  /** scroll: world scroll speed so effects stick to the track. */
+  update(dt: number, scroll = 0) {
     for (const p of this.particles) {
       p.x += p.vx * dt;
-      p.y += p.vy * dt;
+      p.y += p.vy * dt + scroll * dt;
       p.vx *= 1 - dt * 3;
       p.vy *= 1 - dt * 3;
       p.life -= dt;
     }
     if (this.particles.some((p) => p.life <= 0)) this.particles = this.particles.filter((p) => p.life > 0);
     for (const t of this.texts) {
-      t.y -= 40 * dt;
+      t.y -= 40 * dt - scroll * dt * 0.5;
       t.life -= dt;
     }
     if (this.texts.some((t) => t.life <= 0)) this.texts = this.texts.filter((t) => t.life > 0);
     this.shake = Math.max(0, this.shake - dt * 30);
     this.flash = Math.max(0, this.flash - dt * 3);
-    this.enemyBasePunch = Math.max(0, this.enemyBasePunch - dt * 6);
-    this.playerBasePunch = Math.max(0, this.playerBasePunch - dt * 6);
   }
 
   clear() {

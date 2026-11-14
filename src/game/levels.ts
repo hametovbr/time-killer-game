@@ -1,208 +1,214 @@
 import { Rng } from './rng';
-import { W, FIELD_TOP, FIELD_BOTTOM, BASE_FIRE_RATE } from './constants';
+import { LANES } from './constants';
+import { dps, damageMul, startSquad, WEAPONS } from './balance';
 
-export type LevelType = 'normal' | 'boss' | 'bonus';
+export type LevelType = 'normal' | 'boss';
+export type GateOp = '+' | '-' | 'x' | '/';
 
 export interface GateDef {
-  x: number;
-  y: number;
-  w: number;
-  kind: 'mul' | 'div';
-  n: number;
-  gold?: boolean;
-  move?: { amp: number; speed: number; phase: number };
-}
-export interface WallDef {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  hp: number;
-}
-export interface SpinnerDef {
-  x: number;
-  y: number;
-  len: number;
-  speed: number;
+  z: number;
+  lane: number;
+  op: GateOp;
+  v: number;
+  shootable: boolean;
 }
 export interface EnemyDef {
+  z: number;
+  lane: number;
+  hp: number;
+  power: number; // soldiers it takes on contact
+  big: boolean;
+  chase: boolean;
   speed: number;
-  waveInterval: number;
-  waveSize: number;
-  giantEveryWaves: number; // 0 = none
-  giantHp: number;
-  firstWaveDelay: number;
+}
+export interface CrateDef {
+  z: number;
+  lane: number;
+  kind: 'weapon' | 'rank';
+  hp: number;
+}
+export interface BossDef {
+  z: number;
+  hp: number;
+  speed: number;
+  eat: number; // soldiers per second while in contact
 }
 export interface LevelDef {
   n: number;
   type: LevelType;
   d: number;
-  enemyBaseHp: number;
-  bonusDuration: number;
-  enemy: EnemyDef | null;
+  length: number;
+  gatePoint: number; // damage needed to raise a shootable gate by 1
   gates: GateDef[];
-  walls: WallDef[];
-  spinners: SpinnerDef[];
-  champion: boolean;
+  enemies: EnemyDef[];
+  crates: CrateDef[];
+  boss: BossDef;
   intro: string | null;
 }
 
-/** Level number at which each element first appears. */
+/** First level where each element appears (one new thing every 1–3 levels early on). */
 export const UNLOCK = {
-  enemies: 3,
-  div: 4,
-  champion: 6,
-  moving: 8,
-  giants: 10,
-  walls: 11,
-  spinners: 13,
-  gold: 20,
+  minus: 2,
+  weaponCrate: 3,
+  shootable: 4,
+  rankCrate: 6,
+  divide: 7,
+  chasers: 8,
+  big: 10,
+  x3: 12,
 };
 
-export function levelType(n: number): LevelType {
-  if (n % 5 === 0) return 'boss';
-  if (n % 10 === 7) return 'bonus';
-  return 'normal';
-}
+const INTROS: Record<number, string> = {
+  1: 'Веди пальцем: отряд встаёт на полосу под пальцем. Проходи синие ворота!',
+  2: 'Красные ворота отнимают солдат — обходи их',
+  3: 'Расстреляй ящик 🔫 — получишь оружие лучше',
+  4: 'Стреляй по воротам +/− — число на них растёт!',
+  5: 'БОСС! Набери отряд побольше до конца трассы',
+  6: 'Ящик ⭐ повышает ранг солдат — больше урона',
+  7: 'Ворота ÷ делят отряд. Осторожно!',
+  8: 'Некоторые зомби бегут на твою полосу',
+  10: 'Громилы: много HP, забирают 6 солдат',
+};
 
-/** Sawtooth difficulty: spike on bosses, breather right after. */
+export const levelType = (n: number): LevelType => (n % 5 === 0 ? 'boss' : 'normal');
+
+/** Sawtooth: spike on bosses, breather after. */
 export function difficulty(n: number): number {
   let d = n;
-  if (levelType(n) === 'boss') d += 3;
+  if (levelType(n) === 'boss') d += 2;
   if (n > 5 && levelType(n - 1) === 'boss') d -= 2;
   return Math.max(1, d);
 }
 
-const INTROS: Record<number, string> = {
-  1: 'Зажми и веди пальцем — пушка стреляет толпой',
-  2: 'Выбирай ворота с бо́льшим множителем',
-  3: 'Враги! Твоя толпа уничтожает их 1 к 1',
-  4: 'Красные ворота делят толпу — объезжай их',
-  5: 'БОСС: крепость прочнее обычного',
-  6: 'Новое: ЧЕМПИОН. Копи шкалу и жми кнопку',
-  7: 'Бонус! Набери как можно больше монет',
-  8: 'Ворота начали двигаться',
-  10: 'Осторожно: вражеские гиганты',
-  11: 'Стены поглощают юнитов, пока не сломаются',
-  13: 'Спиннер сносит всё, что задевает',
-  20: 'Золотые ворота ×5 — узкие, но жирные',
-};
-
-function makeGateRow(rng: Rng, n: number, y: number, type: LevelType): GateDef[] {
-  const count = n <= 1 ? 2 : rng.pick(n < 6 ? [2, 2, 3] : [1, 2, 2, 3, 3]);
-  const margin = 18;
-  const slot = (W - margin * 2) / count;
-  const gates: GateDef[] = [];
-  const divP = n >= UNLOCK.div ? Math.min(0.42, 0.22 + n * 0.008) : 0;
-  const maxMul = n < 3 ? 3 : n < 12 ? 3 : 4;
-  for (let i = 0; i < count; i++) {
-    const w = Math.min(slot - 14, rng.range(84, 128));
-    const cx = margin + slot * i + slot / 2;
-    const x = count === 1 ? rng.range(110, W - 110) : cx + rng.range(-6, 6);
-    const isDiv = type !== 'bonus' && rng.chance(divP);
-    const g: GateDef = isDiv
-      ? { x, y, w, kind: 'div', n: rng.pick([2, 2, 3]) }
-      : { x, y, w, kind: 'mul', n: rng.int(2, maxMul) };
-    if (n === 1) g.n = 2;
-    gates.push(g);
-  }
-  // Guarantee at least one multiplier in the row.
-  if (!gates.some((g) => g.kind === 'mul')) {
-    const g = rng.pick(gates);
-    g.kind = 'mul';
-    g.n = 2;
-  }
-  // Gold gate: rare, narrow, ×5.
-  if (n >= UNLOCK.gold && rng.chance(0.18)) {
-    const g = rng.pick(gates);
-    g.kind = 'mul';
-    g.n = 5;
-    g.gold = true;
-    g.w = 54;
-  }
-  // Moving gates.
-  if (n >= UNLOCK.moving) {
-    const p = Math.min(0.55, 0.25 + (n - UNLOCK.moving) * 0.02);
-    for (const g of gates) {
-      if (rng.chance(p)) {
-        const room = count === 1 ? 120 : Math.max(18, slot / 2 - g.w / 2 + 10);
-        g.move = { amp: Math.min(room, 60), speed: rng.range(0.9, 1.8), phase: rng.range(0, Math.PI * 2) };
-      }
-    }
-  }
-  return gates;
-}
-
-/** Expected per-row multiplier for a reasonably good player. */
-function rowValue(gates: GateDef[]): number {
-  const vals = gates.map((g) => (g.kind === 'mul' ? g.n : 1 / g.n));
-  const best = Math.max(...vals);
-  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-  return 0.75 * best + 0.25 * avg;
-}
-
 export function generateLevel(n: number): LevelDef {
-  const rng = new Rng(n * 7919 + 13);
+  const rng = new Rng(n * 9973 + 7);
   const type = levelType(n);
   const d = difficulty(n);
 
-  // Vertical layout: a list of "bands" — gate rows plus obstacles.
-  const rows = type === 'boss' ? 3 : n <= 2 ? 2 : n < 9 ? rng.pick([2, 3]) : rng.pick([3, 3, 4]);
-  const bands: ('gates' | 'wall' | 'spinner')[] = [];
-  for (let i = 0; i < rows; i++) bands.push('gates');
-  if (type !== 'bonus') {
-    if (n >= UNLOCK.walls && (type === 'boss' || rng.chance(0.55))) bands.splice(rng.int(1, bands.length - 1), 0, 'wall');
-    if (n >= UNLOCK.spinners && (type === 'boss' || rng.chance(0.45)))
-      bands.splice(rng.int(1, bands.length - 1), 0, 'spinner');
-  }
+  // Expected player state at this level (upgrades bought ~ every 3 levels) — used to scale HP.
+  const expUp = Math.floor(n / 3);
+  let expWeapon = Math.min(WEAPONS.length - 1, Math.floor(n / 9));
+  let expRank = 0;
+  const start = startSquad(Math.min(20, expUp));
+  // Designed squad-size curve over the level: gates are tuned to roughly follow it.
+  const peakT = Math.min(450, 25 + 7 * n);
+  let expCount = start;
+  const expDmg = damageMul(Math.min(25, expUp));
+  const expDps = () => dps(Math.max(1, expCount), expWeapon, expRank, expDmg);
+
   const gates: GateDef[] = [];
-  const walls: WallDef[] = [];
-  const spinners: SpinnerDef[] = [];
-  const step = (FIELD_BOTTOM - FIELD_TOP) / Math.max(1, bands.length - 1);
-  let expectMul = 1;
-  bands.forEach((b, i) => {
-    const y = bands.length === 1 ? (FIELD_TOP + FIELD_BOTTOM) / 2 : FIELD_TOP + step * i;
-    if (b === 'gates') {
-      const row = makeGateRow(rng, n, y, type);
+  const enemies: EnemyDef[] = [];
+  const crates: CrateDef[] = [];
+  const beats = Math.round(9 + Math.min(9, n * 0.45) + (type === 'boss' ? 2 : 0));
+  const enemyHp = () => Math.max(1, Math.round(expDps() * (0.1 + Math.min(0.08, d * 0.004)) * rng.range(0.8, 1.2)));
+  const enemySpeed = Math.min(70, 25 + d * 2);
+  let z = 520;
+  const estLen = 520 + beats * 360;
+  const target = (zz: number) => start + (peakT - start) * Math.min(1, zz / estLen);
+  let weaponCrates = 0;
+  let rankCrates = 0;
+
+  for (let b = 0; b < beats; b++) {
+    const roll = rng.next();
+    const lastBeats = b >= beats - 2;
+    let kind: 'gates' | 'enemies' | 'crate';
+    if (b === 0 || b % 2 === 0) kind = 'gates';
+    else if (n >= UNLOCK.weaponCrate && weaponCrates < (n < 10 ? 1 : 2) && roll < 0.35 && !lastBeats) kind = 'crate';
+    else if (n >= UNLOCK.rankCrate && rankCrates < 1 && roll < 0.5 && !lastBeats) kind = 'crate';
+    else kind = n <= 2 && b < 3 ? 'gates' : 'enemies';
+
+    if (kind === 'gates') {
+      expCount = target(z);
+      const want = Math.max(2, target(z + 700) - expCount);
+      const lanes = rng.chance(n < 3 ? 0.3 : 0.6) ? [0, 1, 2] : rng.shuffle([0, 1, 2]).slice(0, 2).sort();
+      const row: GateDef[] = [];
+      for (const lane of lanes) {
+        const good = b === 0 || rng.chance(n < UNLOCK.minus ? 1 : 0.55);
+        let op: GateOp;
+        let v: number;
+        if (good) {
+          const useX = expCount >= 4 && expCount * 2 <= expCount + want * 2.2 && rng.chance(0.45);
+          op = useX ? 'x' : '+';
+          v = useX ? (n >= UNLOCK.x3 && expCount * 3 <= expCount + want * 3 && rng.chance(0.3) ? 3 : 2) : Math.max(2, Math.round(want * rng.range(0.6, 1.5)));
+        } else {
+          const useDiv = n >= UNLOCK.divide && expCount >= 6 && rng.chance(0.3);
+          op = useDiv ? '/' : '-';
+          v = useDiv ? 2 : Math.max(2, Math.round(Math.min(want, expCount * 0.6) * rng.range(0.6, 1.0)));
+        }
+        row.push({ z, lane, op, v, shootable: n >= UNLOCK.shootable && (op === '+' || op === '-') });
+      }
+      if (!row.some((g) => g.op === '+' || g.op === 'x')) {
+        row[0].op = '+';
+        row[0].v = Math.max(3, Math.round(want));
+      }
       gates.push(...row);
-      expectMul *= rowValue(row);
-    } else if (b === 'wall') {
-      const w = rng.range(90, 150);
-      walls.push({ x: rng.range(w / 2 + 10, W - w / 2 - 10), y, w, h: 26, hp: Math.round(12 + d * 3.2) });
+      z += rng.range(300, 380);
+    } else if (kind === 'crate') {
+      const isWeapon = n >= UNLOCK.weaponCrate && weaponCrates < (n < 10 ? 1 : 2) && (rankCrates >= 1 || n < UNLOCK.rankCrate || rng.chance(0.5));
+      const lane = rng.int(0, 2);
+      crates.push({ z: z + 40, lane, kind: isWeapon ? 'weapon' : 'rank', hp: Math.round(expDps() * rng.range(1.2, 1.8) + 4) });
+      if (isWeapon) {
+        weaponCrates++;
+        expWeapon = Math.min(WEAPONS.length - 1, expWeapon + 1);
+      } else {
+        rankCrates++;
+        expRank = Math.min(5, expRank + 1);
+      }
+      // Guards in other lanes.
+      for (const l of [0, 1, 2]) {
+        if (l === lane || rng.chance(0.5)) continue;
+        for (let i = 0; i < 2 + Math.floor(d / 6); i++)
+          enemies.push({ z: z + i * 26, lane: l, hp: enemyHp(), power: 1, big: false, chase: false, speed: enemySpeed });
+      }
+      z += rng.range(320, 400);
     } else {
-      spinners.push({ x: rng.range(120, W - 120), y, len: rng.range(80, 110), speed: rng.pick([-1, 1]) * rng.range(1.4, 2.4) });
+      const groupLanes = rng.chance(0.3 + Math.min(0.3, d * 0.012)) ? rng.shuffle([0, 1, 2]).slice(0, 2) : [rng.int(0, 2)];
+      for (const lane of groupLanes) {
+        const k = Math.min(8, 2 + Math.round(d * 0.18) + rng.int(0, 2));
+        for (let i = 0; i < k; i++) {
+          enemies.push({
+            z: z + i * 24,
+            lane,
+            hp: enemyHp(),
+            power: 1,
+            big: false,
+            chase: n >= UNLOCK.chasers && rng.chance(Math.min(0.35, 0.1 + d * 0.01)),
+            speed: enemySpeed,
+          });
+        }
+      }
+      if (n >= UNLOCK.big && rng.chance(Math.min(0.6, 0.25 + d * 0.015))) {
+        enemies.push({ z: z + 60, lane: rng.int(0, 2), hp: enemyHp() * 7, power: 6, big: true, chase: false, speed: enemySpeed * 0.6 });
+      }
+      z += rng.range(330, 420);
     }
-  });
-
-  // Base HP from expected throughput × target duration (20s → 45s, bosses ~60s).
-  // Player's fire-rate upgrades are expected to grow ~4%/level; HP grows slower (3%) so rewards outpace challenge.
-  const throughput = BASE_FIRE_RATE * Math.min(expectMul, 30) * 0.5 * (1 + 0.03 * n);
-  const targetT = type === 'boss' ? Math.min(55, 32 + n * 0.5) : Math.min(40, 16 + n * 1.0);
-  const enemyBaseHp = Math.round((throughput * targetT) / 10) * 10;
-
-  let enemy: EnemyDef | null = null;
-  if (type !== 'bonus' && n >= UNLOCK.enemies) {
-    enemy = {
-      speed: Math.min(88, 45 + d * 1.4),
-      waveInterval: Math.max(1.9, 3.8 - d * 0.06),
-      waveSize: Math.min(18, Math.round(3 + d * 0.42)),
-      giantEveryWaves: n >= UNLOCK.giants ? (type === 'boss' ? 3 : n >= 14 ? 5 : 0) : 0,
-      giantHp: Math.round(10 + d * 1.2),
-      firstWaveDelay: n === UNLOCK.enemies ? 4 : 2.2,
-    };
   }
+
+  const length = z + 100;
+  // Boss HP assumes the player got about half of the crate upgrades.
+  expCount = peakT * 0.85;
+  expWeapon = Math.max(0, expWeapon - Math.floor(weaponCrates / 2));
+  expRank = Math.max(0, expRank - 1);
+  const bossT = type === 'boss' ? 10 : 6;
+  const boss: BossDef = {
+    z: length + 520,
+    hp: Math.round(expDps() * bossT),
+    speed: Math.min(60, 26 + d * 1.2),
+    eat: 6 + d * 0.6,
+  };
 
   return {
     n,
     type,
     d,
-    enemyBaseHp: type === 'bonus' ? 0 : Math.max(60, enemyBaseHp),
-    bonusDuration: 15,
-    enemy,
+    length,
+    gatePoint: Math.max(1, expDps() * 0.08),
     gates,
-    walls,
-    spinners,
-    champion: n >= UNLOCK.champion,
+    enemies,
+    crates,
+    boss,
     intro: INTROS[n] ?? null,
   };
 }
+
+export const laneX = (lane: number) => LANES[lane];

@@ -1,37 +1,31 @@
 export const W = 400;
 export const H = 720;
 
-export const ENEMY_BASE_BOTTOM = 104; // units reaching this y hit the enemy base
-export const PLAYER_BASE_TOP = 668; // enemies reaching this y hit the player base
-export const CANNON_Y = 632;
-export const FIELD_TOP = 170;
-export const FIELD_BOTTOM = 548;
+export const LANES = [80, 200, 320] as const; // lane centre x
+export const LANE_W = 116;
+export const ROAD_L = 20;
+export const ROAD_R = 380;
 
-export const UNIT_R = 4.2;
-export const UNIT_SPEED = 175;
-export const MAX_UNITS = 1400;
-export const MAX_ENEMIES = 600;
-
-export const BASE_FIRE_RATE = 8; // shots per second without upgrades
-export const CHAMPION_SHOTS = 45; // shots needed to charge champion
-export const CHAMPION_HP = 30;
-export const CHAMPION_R = 15;
+export const SQUAD_Y = 590; // screen y of the squad front
+export const RUN_SPEED = 150; // px per second of track
+export const BULLET_SPEED = 950;
+export const MAX_SQUAD = 999;
+export const FIRE_RANGE = SQUAD_Y - 40; // bullets travel this far ahead (track px)
 
 export const COLORS = {
-  bg: '#1d2340',
-  track: '#2a3157',
-  trackLine: 'rgba(255,255,255,0.05)',
+  grass: '#2f6b3e',
+  grassDark: '#285d36',
+  road: '#3b4160',
+  roadDark: '#333852',
+  laneLine: 'rgba(255,255,255,0.35)',
   friend: '#45b4ff',
   friendDark: '#1f6fb8',
-  enemy: '#ff5468',
-  enemyDark: '#a8213a',
-  good: '#3fd47a',
-  goodDark: '#1f8a4a',
+  enemy: '#7bd34a',
+  enemyDark: '#3c7a1f',
+  good: '#3fb4ff',
+  goodDark: '#1f6fb8',
   bad: '#ff5a5a',
   badDark: '#a82c2c',
   gold: '#ffc83d',
-  goldDark: '#b5841a',
-  wall: '#8b93b8',
-  wallDark: '#565d80',
   text: '#ffffff',
 };

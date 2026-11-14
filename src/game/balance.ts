@@ -1,6 +1,28 @@
-import { BASE_FIRE_RATE, CHAMPION_SHOTS } from './constants';
+export interface Weapon {
+  name: string;
+  icon: string;
+  rate: number; // volleys per second
+  dmg: number; // damage per soldier per volley
+  color: string;
+}
 
-export type UpgradeId = 'fire' | 'hp' | 'champ' | 'income';
+export const WEAPONS: Weapon[] = [
+  { name: 'Пистолет', icon: '🔫', rate: 2.2, dmg: 1, color: '#ffe36b' },
+  { name: 'Автомат', icon: '🔫', rate: 4.5, dmg: 0.9, color: '#ffd04a' },
+  { name: 'Дробовик', icon: '💥', rate: 2.6, dmg: 2.6, color: '#ffa94a' },
+  { name: 'Винтовка', icon: '🎯', rate: 5, dmg: 1.7, color: '#ff8a4a' },
+  { name: 'Пулемёт', icon: '⚙️', rate: 10, dmg: 1.2, color: '#ff6b4a' },
+  { name: 'Лазер', icon: '⚡', rate: 8, dmg: 2.4, color: '#7af0ff' },
+];
+export const RANK_MUL = [1, 1.3, 1.7, 2.2, 2.9, 3.8];
+export const RANK_NAMES = ['Рядовой', 'Ефрейтор', 'Сержант', 'Лейтенант', 'Капитан', 'Майор'];
+
+/** Firepower grows sub-linearly with headcount: ×-gates feel great but don't trivialise everything. */
+export const squadPower = (count: number) => Math.pow(Math.max(0, count), 0.8);
+export const dps = (count: number, weapon: number, rank: number, dmgMul: number) =>
+  squadPower(count) * WEAPONS[weapon].rate * WEAPONS[weapon].dmg * RANK_MUL[rank] * dmgMul;
+
+export type UpgradeId = 'squad' | 'weapon' | 'damage' | 'income';
 
 export interface UpgradeInfo {
   id: UpgradeId;
@@ -8,60 +30,28 @@ export interface UpgradeInfo {
   icon: string;
   max: number;
   baseCost: number;
+  growth: number;
   describe: (lvl: number) => string;
 }
 
 export const UPGRADES: UpgradeInfo[] = [
-  {
-    id: 'fire',
-    title: 'Скорострельность',
-    icon: '🔥',
-    max: 20,
-    baseCost: 40,
-    describe: (l) => `${fireRate(l).toFixed(1)} выстр/с`,
-  },
-  {
-    id: 'hp',
-    title: 'Прочность базы',
-    icon: '🛡️',
-    max: 15,
-    baseCost: 35,
-    describe: (l) => `${playerBaseHp(l)} HP`,
-  },
-  {
-    id: 'champ',
-    title: 'Заряд чемпиона',
-    icon: '👑',
-    max: 10,
-    baseCost: 60,
-    describe: (l) => `${championShots(l)} выстрелов`,
-  },
-  {
-    id: 'income',
-    title: 'Доход',
-    icon: '💰',
-    max: 15,
-    baseCost: 50,
-    describe: (l) => `+${Math.round((incomeMul(l) - 1) * 100)}% монет`,
-  },
+  { id: 'squad', title: 'Стартовый отряд', icon: '👥', max: 20, baseCost: 30, growth: 1.42, describe: (l) => `${startSquad(l)} солд.` },
+  { id: 'weapon', title: 'Оружие на старте', icon: '🔫', max: WEAPONS.length - 1, baseCost: 150, growth: 2.6, describe: (l) => WEAPONS[l].name },
+  { id: 'damage', title: 'Урон', icon: '💪', max: 25, baseCost: 40, growth: 1.38, describe: (l) => `+${Math.round((damageMul(l) - 1) * 100)}%` },
+  { id: 'income', title: 'Доход', icon: '💰', max: 15, baseCost: 50, growth: 1.45, describe: (l) => `+${Math.round((incomeMul(l) - 1) * 100)}% монет` },
 ];
 
-export const fireRate = (l: number) => BASE_FIRE_RATE * (1 + 0.12 * l);
-export const playerBaseHp = (l: number) => 10 + 3 * l;
-export const championShots = (l: number) => Math.round(CHAMPION_SHOTS * Math.pow(0.9, l));
+export const startSquad = (l: number) => 3 + l;
+export const damageMul = (l: number) => 1 + 0.1 * l;
 export const incomeMul = (l: number) => 1 + 0.15 * l;
-export const upgradeCost = (u: UpgradeInfo, l: number) => Math.round((u.baseCost * Math.pow(1.45, l)) / 5) * 5;
+export const upgradeCost = (u: UpgradeInfo, l: number) => Math.round((u.baseCost * Math.pow(u.growth, l)) / 5) * 5;
 
-export function starsFor(hpLeft: number, hpMax: number): number {
-  const r = hpLeft / hpMax;
-  return r >= 0.7 ? 3 : r >= 0.35 ? 2 : 1;
+export function starsFor(endCount: number, peak: number): number {
+  const r = endCount / Math.max(1, peak);
+  return r >= 0.6 ? 3 : r >= 0.3 ? 2 : 1;
 }
 
-export function levelReward(n: number, stars: number, incomeLvl: number): number {
+export function levelReward(n: number, stars: number, endCount: number, incomeLvl: number): number {
   const mult = stars === 3 ? 2 : stars === 2 ? 1.5 : 1;
-  return Math.round((30 + 8 * n) * mult * incomeMul(incomeLvl));
-}
-
-export function bonusReward(unitsCollected: number, incomeLvl: number): number {
-  return Math.round(unitsCollected * 0.12 * incomeMul(incomeLvl));
+  return Math.round((30 + 8 * n + Math.min(endCount, 300) * 0.3) * mult * incomeMul(incomeLvl));
 }

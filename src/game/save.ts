@@ -8,21 +8,21 @@ export interface SaveData {
   stars: Record<number, number>;
   fails: Record<number, number>; // consecutive fails per level → adaptive easing
   settings: { sound: boolean; vibration: boolean; reduceShake: boolean };
-  stats: { played: number; won: number; unitsFired: number; bestPeak: number };
+  stats: { played: number; won: number; kills: number; bestPeak: number };
 }
 
-const KEY = 'mobcannon.save.v1';
+const KEY = 'lanesquad.save.v1';
 
 export function defaultSave(): SaveData {
   return {
     v: 1,
     level: 1,
     coins: 0,
-    upgrades: { fire: 0, hp: 0, champ: 0, income: 0 },
+    upgrades: { squad: 0, weapon: 0, damage: 0, income: 0 },
     stars: {},
     fails: {},
     settings: { sound: true, vibration: true, reduceShake: false },
-    stats: { played: 0, won: 0, unitsFired: 0, bestPeak: 0 },
+    stats: { played: 0, won: 0, kills: 0, bestPeak: 0 },
   };
 }
 
