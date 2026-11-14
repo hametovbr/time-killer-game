@@ -30,6 +30,10 @@ export type GameEvent =
   | { t: 'volley'; weapon: number }
   | { t: 'bossHit'; x: number; dmg: number }
   | { t: 'bossArrive' }
+  | { t: 'bossTelegraph'; lane: number }
+  | { t: 'bossSummon'; lanes: number[] }
+  | { t: 'bossEnrage' }
+  | { t: 'bossSmash' }
   | { t: 'win' }
   | { t: 'lose' };
 
@@ -82,14 +86,25 @@ export interface Bullet {
 }
 export interface Boss {
   z: number;
+  x: number;
+  lane: number;
+  nextLane: number;
   hp: number;
   maxHp: number;
   speed: number;
-  eat: number;
   flash: number;
   active: boolean;
   eatAcc: number;
+  switchT: number;
+  telegraph: number; // >0 while warning about an upcoming lane switch
+  summonT: number;
+  enraged: boolean;
+  trampling: boolean;
 }
+
+/** Where the boss appears (track px ahead of the squad) and its hit radius. */
+export const BOSS_START = 500;
+export const BOSS_R = 46;
 
 export type SimState = 'playing' | 'won' | 'lost';
 
@@ -113,6 +128,8 @@ export class Sim {
   wall: number;
   wallMax: number;
   wallFlash = 0;
+  bossStartT = 0;
+  bossSmashed = false;
   private biteAcc = 0;
 
   // In-run progression.
@@ -155,7 +172,23 @@ export class Sim {
     });
     this.crates = level.crates.map((c) => ({ z: c.z, lane: c.lane, hp: c.hp, maxHp: c.hp, flash: 0, alive: true }));
     const bhp = Math.max(10, Math.round(level.boss.hp * ease));
-    this.boss = { z: level.boss.z, hp: bhp, maxHp: bhp, speed: level.boss.speed, eat: level.boss.eat, flash: 0, active: false, eatAcc: 0 };
+    this.boss = {
+      z: Infinity,
+      x: LANES[1],
+      lane: 1,
+      nextLane: 1,
+      hp: bhp,
+      maxHp: bhp,
+      speed: (BOSS_START + BARRICADE_GAP) / level.boss.approachT,
+      flash: 0,
+      active: false,
+      eatAcc: 0,
+      switchT: 2,
+      telegraph: 0,
+      summonT: 1.2,
+      enraged: false,
+      trampling: false,
+    };
   }
 
   get progress(): number {
@@ -242,11 +275,22 @@ export class Sim {
       this.speed = Math.max(0, this.speed - dt * 400);
       if (!this.boss.active) {
         this.boss.active = true;
+        this.boss.z = this.dist + BOSS_START + 30;
+        // The boss sizes itself to your army: a real DPS check whether you snowballed or not.
+        // You need roughly k of its approach time on target while also handling its minions.
+        const n = this.level.n;
+        const intro = n <= 3 ? 0.65 : n <= 6 ? 0.8 : 1; // first bosses are gentler
+        const k = (this.level.type === 'boss' ? 1.0 : 0.88) * intro * (this.cfg.ease ?? 1);
+        const scaled = Math.round(this.currentDps * this.level.boss.approachT * k);
+        this.boss.hp = this.boss.maxHp = Math.max(this.boss.maxHp, scaled);
+        this.bossStartT = this.t;
+        this.boss.lane = this.boss.nextLane = this.rng.int(0, 2);
+        this.boss.x = LANES[this.boss.lane];
         this.events.push({ t: 'bossArrive' });
       }
     }
     this.dist += this.speed * dt;
-    if (this.boss.active) this.boss.z = Math.max(this.dist + 40, this.boss.z - this.boss.speed * dt);
+    if (this.boss.active) this.updateBoss(dt);
 
     // Fire.
     this.fireAcc += dt * this.fireRate;
@@ -322,23 +366,6 @@ export class Sim {
       if (c.alive && c.z < this.dist - 10) c.alive = false;
     }
 
-    // Boss contact: eats soldiers.
-    this.boss.flash = Math.max(0, this.boss.flash - dt * 6);
-    if (this.boss.active && this.boss.z <= this.dist + 45) {
-      this.boss.eatAcc += this.boss.eat * dt;
-      while (this.boss.eatAcc >= 1) {
-        this.boss.eatAcc -= 1;
-        if (this.count > 1) {
-          this.count--;
-          this.events.push({ t: 'squadHit', x: this.squadX, lost: 1 });
-        } else {
-          // Nothing left to eat — the boss smashes through to the barricade.
-          this.wall -= 1;
-          this.wallFlash = 1;
-          this.events.push({ t: 'leak', x: this.squadX, dmg: 1 });
-        }
-      }
-    }
 
     this.peak = Math.max(this.peak, this.count);
     if (this.enemies.length > 80 && this.t % 1 < dt) this.enemies = this.enemies.filter((e) => e.alive);
@@ -346,11 +373,98 @@ export class Sim {
     if (this.boss.hp <= 0) {
       this.boss.hp = 0;
       this.state = 'won';
+      for (const e of this.enemies) if (e.alive) {
+        e.alive = false;
+        this.events.push({ t: 'hit', x: e.x, z: e.z, kill: true, big: e.big });
+      }
       this.events.push({ t: 'win' });
     } else if (this.wall <= 0) {
       this.wall = 0;
       this.state = 'lost';
       this.events.push({ t: 'lose' });
+    }
+  }
+
+  // ---------- Boss ----------
+  private updateBoss(dt: number) {
+    const b = this.boss;
+    const def = this.level.boss;
+    b.flash = Math.max(0, b.flash - dt * 6);
+    if (def.enrage && !b.enraged && b.hp < b.maxHp / 2) {
+      b.enraged = true;
+      b.summonT = 0;
+      this.events.push({ t: 'bossEnrage' });
+    }
+    const rage = b.enraged ? 1.35 : 1;
+
+    // Lane switching, telegraphed so the player can react.
+    if (b.telegraph > 0) {
+      b.telegraph -= dt;
+      if (b.telegraph <= 0) b.lane = b.nextLane;
+    } else {
+      b.switchT -= dt * rage;
+      if (b.switchT <= 0) {
+        const options = [0, 1, 2].filter((l) => l !== b.lane);
+        b.nextLane = options[this.rng.int(0, options.length - 1)];
+        b.telegraph = b.enraged ? 0.6 : 0.85;
+        b.switchT = this.rng.range(def.switchEvery[0], def.switchEvery[1]);
+        this.events.push({ t: 'bossTelegraph', lane: b.nextLane });
+      }
+    }
+    const tx = LANES[b.lane];
+    b.x += Math.max(-280 * dt, Math.min(280 * dt, tx - b.x));
+
+    // Minion packs into the lanes the boss is NOT in — you can't just tunnel on the boss.
+    b.summonT -= dt * rage;
+    if (b.summonT <= 0) {
+      b.summonT = def.summonEvery;
+      const others = this.rng.shuffle([0, 1, 2].filter((l) => l !== b.lane));
+      const lanes = others.slice(0, b.enraged ? 2 : 1 + (this.rng.chance(0.4) ? 1 : 0));
+      for (const lane of lanes) {
+        for (let i = 0; i < def.minions; i++) {
+          const hp = def.minionHp;
+          this.enemies.push({
+            z: this.dist + 470 + i * 22,
+            x: LANES[lane],
+            lane,
+            hp,
+            maxHp: hp,
+            power: def.minionPower,
+            leak: 1,
+            xp: 1,
+            big: false,
+            chase: false,
+            speed: def.minionSpeed,
+            expDps: 0,
+            seen: true,
+            flash: 0,
+            alive: true,
+            passed: false,
+            wobble: Math.random() * 6,
+          });
+        }
+      }
+      this.events.push({ t: 'bossSummon', lanes });
+    }
+
+    // Walk towards the barricade. Standing in its way slows it down, but it tramples soldiers.
+    const ahead = b.z - this.dist;
+    b.trampling = ahead <= 34 && Math.abs(b.x - this.squadX) < LANE_W * 0.6 && this.count > 1;
+    b.z -= b.speed * rage * (b.trampling ? 0.3 : 1) * dt;
+    if (b.trampling) {
+      b.eatAcc += def.eat * dt;
+      while (b.eatAcc >= 1 && this.count > 1) {
+        b.eatAcc -= 1;
+        this.count--;
+        this.events.push({ t: 'squadHit', x: this.squadX, lost: 1 });
+      }
+    }
+    if (b.z - this.dist <= -BARRICADE_GAP + 20 && b.hp > 0) {
+      // The boss reached the barricade: it's over.
+      this.wall = 0;
+      this.wallFlash = 1;
+      this.bossSmashed = true;
+      this.events.push({ t: 'bossSmash' });
     }
   }
 
@@ -414,8 +528,9 @@ export class Sim {
         if (g.z > b.z || g.z < prev) continue;
         if (!best || g.z < best.z) best = { z: g.z, kind: 'g', ref: g };
       }
-      if (this.boss.active || this.boss.z - this.dist < FIRE_RANGE) {
-        if (this.boss.z - 30 <= b.z && (!best || this.boss.z - 30 < best.z)) best = { z: this.boss.z - 30, kind: 'b', ref: null };
+      if (this.boss.active && Math.abs(b.x - this.boss.x) < BOSS_R + 6) {
+        const bz = this.boss.z - 30;
+        if (bz <= b.z && (!best || bz < best.z)) best = { z: bz, kind: 'b', ref: null };
       }
       if (best) {
         if (best.kind === 'e') {

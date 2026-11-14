@@ -1,5 +1,14 @@
 # Status
 
+## v3.1 (2026-11-14) — real boss fights
+Feedback: bosses were trivial; once at the finish you couldn't lose.
+- [x] Boss marches on the barricade — reaching it = defeat (DPS check with a deadline)
+- [x] Telegraphed lane switches, minion packs into the other lanes, body-blocking trade-off
+- [x] Enrage phase at 50% HP on boss levels
+- [x] Boss HP scales to the player's current firepower (gentler on levels 1–6)
+- [x] Boss HP + distance-to-barricade HUD, defeat screen explains what happened
+- [x] Simulator reports boss reach/loss rate and fight length
+
 ## v3.0 (2026-11-14) — gameplay rework
 Feedback on v2: dodging zombies was a dominant strategy, killing was pointless, no constant stream of zombies or bonuses.
 - [x] Research: dominant strategies, tower-defense lives, Vampire Survivors loop, death-spiral mitigation (`docs/research.md` part 2)

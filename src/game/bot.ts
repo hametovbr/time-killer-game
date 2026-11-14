@@ -50,6 +50,13 @@ export class Bot {
         threat += (e.hp / dps) * (e.big ? 3 : 1) * (1 / (1 + ahead / 160));
       }
       let score = threat;
+      const boss = sim.boss;
+      if (boss.active) {
+        // The boss is the main threat: follow it (anticipating telegraphed switches), but not blindly.
+        const bossLane = boss.telegraph > 0 && boss.telegraph < 0.5 ? boss.nextLane : boss.lane;
+        const urgency = 1 - Math.max(0, Math.min(1, (boss.z - sim.dist) / 500));
+        if (lane === bossLane) score += 1.5 + 4 * urgency;
+      }
       const g = row.find((x) => x.lane === lane);
       if (row.length) {
         let after = sim.count;

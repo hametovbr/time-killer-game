@@ -1,6 +1,6 @@
-import { W, H, COLORS, LANES, LANE_W, ROAD_L, ROAD_R, SQUAD_Y, BARRICADE_Y } from './constants';
+import { W, H, COLORS, LANES, LANE_W, ROAD_L, ROAD_R, SQUAD_Y, BARRICADE_Y, BARRICADE_GAP } from './constants';
 import { WEAPONS } from './balance';
-import { gateLabel, type Sim } from './sim';
+import { gateLabel, BOSS_R, BOSS_START, type Sim } from './sim';
 import type { Fx } from './fx';
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -65,6 +65,7 @@ export class Renderer {
     this.drawBullets(sim, sy0);
     this.drawSquad(sim, time);
     this.drawBarricade(sim);
+    this.drawBossHud(sim);
     this.drawFx(fx, sim);
     void time;
 
@@ -245,63 +246,96 @@ export class Renderer {
   }
 
   private drawBoss(sim: Sim, y: number) {
-    if (y < -200 || y > H + 100) return;
-    const c = this.ctx;
     const b = sim.boss;
-    const x = W / 2;
-    const r = 70;
-    const bob = Math.sin(sim.t * 4) * 3;
+    if (!b.active) return;
+    const c = this.ctx;
+    const x = b.x;
+    const r = BOSS_R;
+    const bob = Math.sin(sim.t * (b.enraged ? 9 : 5)) * 3;
+
+    // Telegraph: flashing arrow + lane highlight where the boss is about to go.
+    if (b.telegraph > 0) {
+      const tx = LANES[b.nextLane];
+      const a = 0.25 + 0.25 * Math.sin(sim.t * 30);
+      c.fillStyle = `rgba(255,60,80,${a})`;
+      c.fillRect(tx - LANE_W / 2, 0, LANE_W, BARRICADE_Y);
+      this.label(b.nextLane < b.lane ? '⬅' : '➡', (x + tx) / 2, y - r * 0.6, 34, '#ff5a6a');
+    }
+    // Danger lane: the path the boss is walking down.
+    c.fillStyle = b.enraged ? 'rgba(255,40,60,0.16)' : 'rgba(255,60,80,0.09)';
+    c.fillRect(LANES[b.lane] - LANE_W / 2, y, LANE_W, Math.max(0, BARRICADE_Y - y));
+
+    if (y < -200 || y > H + 100) return;
     c.fillStyle = 'rgba(0,0,0,0.3)';
     c.beginPath();
-    c.ellipse(x, y + 10, r * 1.6, 22, 0, 0, Math.PI * 2);
+    c.ellipse(x, y + 8, r * 1.2, 16, 0, 0, Math.PI * 2);
     c.fill();
     // arms
     c.strokeStyle = '#5a1a2a';
-    c.lineWidth = 22;
+    c.lineWidth = 15;
     c.lineCap = 'round';
     c.beginPath();
-    c.moveTo(x - r * 0.8, y - r * 0.5);
-    c.lineTo(x - r * 1.6, y + 10 + bob);
-    c.moveTo(x + r * 0.8, y - r * 0.5);
-    c.lineTo(x + r * 1.6, y + 10 - bob);
+    c.moveTo(x - r * 0.75, y - r * 0.5);
+    c.lineTo(x - r * 1.15, y + 12 + bob);
+    c.moveTo(x + r * 0.75, y - r * 0.5);
+    c.lineTo(x + r * 1.15, y + 12 - bob);
     c.stroke();
-    c.fillStyle = b.flash > 0.5 ? '#ffd0d8' : '#c2304d';
+    c.fillStyle = b.flash > 0.5 ? '#ffd0d8' : b.enraged ? '#e0203f' : '#c2304d';
     c.strokeStyle = '#5a1a2a';
-    c.lineWidth = 5;
+    c.lineWidth = 4;
     c.beginPath();
     c.arc(x, y - r * 0.6 + bob, r, 0, Math.PI * 2);
     c.fill();
     c.stroke();
     // face
-    c.fillStyle = '#ffe36b';
+    c.fillStyle = b.enraged ? '#ffffff' : '#ffe36b';
     c.beginPath();
-    c.arc(x - 24, y - r * 0.6 + bob + 4, 11, 0, Math.PI * 2);
-    c.arc(x + 24, y - r * 0.6 + bob + 4, 11, 0, Math.PI * 2);
+    c.arc(x - 16, y - r * 0.6 + bob + 2, 8, 0, Math.PI * 2);
+    c.arc(x + 16, y - r * 0.6 + bob + 2, 8, 0, Math.PI * 2);
     c.fill();
     c.fillStyle = '#2a0a12';
-    this.rr(x - 26, y - r * 0.6 + bob + 26, 52, 14, 6);
+    this.rr(x - 18, y - r * 0.6 + bob + 17, 36, 10, 5);
     c.fill();
     // horns
     c.fillStyle = '#eee';
     c.beginPath();
-    c.moveTo(x - 50, y - r * 1.2 + bob);
-    c.lineTo(x - 62, y - r * 1.75 + bob);
-    c.lineTo(x - 30, y - r * 1.4 + bob);
-    c.moveTo(x + 50, y - r * 1.2 + bob);
-    c.lineTo(x + 62, y - r * 1.75 + bob);
-    c.lineTo(x + 30, y - r * 1.4 + bob);
+    c.moveTo(x - 34, y - r * 1.25 + bob);
+    c.lineTo(x - 44, y - r * 1.8 + bob);
+    c.lineTo(x - 18, y - r * 1.45 + bob);
+    c.moveTo(x + 34, y - r * 1.25 + bob);
+    c.lineTo(x + 44, y - r * 1.8 + bob);
+    c.lineTo(x + 18, y - r * 1.45 + bob);
     c.fill();
-    // HP bar
-    const bw = 220;
-    const by = y - r * 1.95;
-    c.fillStyle = 'rgba(0,0,0,0.55)';
-    this.rr(x - bw / 2, by, bw, 14, 7);
+    if (b.trampling) this.label('NOM', x, y + 18, 13, '#ffb0b0');
+  }
+
+  /** Boss HP + "distance to barricade" meter, pinned under the HUD. */
+  private drawBossHud(sim: Sim) {
+    const b = sim.boss;
+    if (!b.active || sim.state === 'won') return;
+    const c = this.ctx;
+    const bw = 300;
+    const x = W / 2 - bw / 2;
+    const y = 96;
+    c.fillStyle = 'rgba(10,12,30,0.8)';
+    this.rr(x - 6, y - 20, bw + 12, 46, 10);
+    c.fill();
+    this.label(`${sim.level.type === 'boss' ? '👑 ' : ''}BOSS${b.enraged ? ' — ENRAGED' : ''}`, W / 2, y - 9, 12, b.enraged ? '#ff6b7d' : '#ffd54a');
+    c.fillStyle = 'rgba(255,255,255,0.12)';
+    this.rr(x, y, bw, 10, 5);
     c.fill();
     c.fillStyle = '#ff4d6a';
-    this.rr(x - bw / 2, by, Math.max(8, bw * Math.max(0, b.hp / b.maxHp)), 14, 7);
+    this.rr(x, y, Math.max(6, bw * Math.max(0, b.hp / b.maxHp)), 10, 5);
     c.fill();
-    this.label(`${Math.ceil(b.hp)}`, x, by + 7, 13);
-    this.label(sim.level.type === 'boss' ? '👑 BOSS' : 'BOSS', x, by - 14, 15, '#ffd54a');
+    // distance meter: how close the boss is to your barricade
+    const total = BOSS_START + BARRICADE_GAP;
+    const left = Math.max(0, Math.min(1, (b.z - sim.dist + BARRICADE_GAP) / total));
+    c.fillStyle = 'rgba(255,255,255,0.12)';
+    this.rr(x, y + 14, bw, 5, 2.5);
+    c.fill();
+    c.fillStyle = left < 0.3 ? '#ff5a5a' : '#ffc83d';
+    this.rr(x, y + 14, Math.max(4, bw * left), 5, 2.5);
+    c.fill();
   }
 
   private drawBullets(sim: Sim, sy: (z: number) => number) {

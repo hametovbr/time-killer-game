@@ -1,5 +1,5 @@
 import './style.css';
-import { W, SQUAD_Y } from './game/constants';
+import { W, SQUAD_Y, LANES } from './game/constants';
 import { generateLevel, type LevelDef } from './game/levels';
 import { Sim, type GameEvent, type Input } from './game/sim';
 import { Renderer } from './game/render';
@@ -128,6 +128,10 @@ function startLevel(n: number) {
   if (level.intro) {
     intro.textContent = level.intro;
     intro.classList.remove('hidden');
+    const shown = level.n;
+    setTimeout(() => {
+      if (level.n === shown) hideIntro();
+    }, 6000);
   } else intro.classList.add('hidden');
   updateHud();
 }
@@ -244,8 +248,34 @@ function handleEvents(events: GameEvent[], audible: boolean) {
       case 'bossArrive':
         if (audible) sfx.roar();
         break;
+      case 'bossTelegraph':
+        if (audible) sfx.tick();
+        break;
+      case 'bossSummon':
+        for (const l of e.lanes) fx.text(LANES[l], 120, '⚠', '#ff6b7d', 26);
+        break;
+      case 'bossEnrage':
+        fx.text(W / 2, 220, 'ENRAGED!', '#ff4d6a', 34);
+        fx.flash = 0.5;
+        fx.flashColor = '#ff2040';
+        fx.addShake(8);
+        if (audible) {
+          sfx.roar();
+          vibrate([60, 40, 60]);
+        }
+        break;
+      case 'bossSmash':
+        fx.flash = 0.9;
+        fx.flashColor = '#ff2040';
+        fx.addShake(14);
+        fx.burst(sim.boss.x, BARRICADE_Y, '#d9b77a', 60, 260, 4);
+        if (audible) {
+          sfx.boom();
+          vibrate([120, 60, 200]);
+        }
+        break;
       case 'bossHit':
-        fx.burst(e.x, screenY(sim.boss.z) - 60, '#ffe36b', 1, 80, 2.5);
+        fx.burst(e.x, screenY(sim.boss.z) - 40, '#ffe36b', 1, 80, 2.5);
         if (audible) sfx.thud();
         break;
       case 'win':
@@ -467,8 +497,12 @@ function showResult(won: boolean, stars: number, reward: number) {
   } else {
     const fails = save.fails[level.n] ?? 0;
     showPanel(`
-      <h2>Barricade broken 🧱</h2>
-      <div class="stat">${sim.stats.leaks} zombies got past you — switch lanes to cover them</div>
+      <h2>${sim.bossSmashed ? 'The boss broke through 👹' : 'Barricade broken 🧱'}</h2>
+      <div class="stat">${
+        sim.bossSmashed
+          ? `Boss HP left: ${Math.ceil(sim.boss.hp)}/${sim.boss.maxHp}. Follow it when it switches lanes, and grab damage perks.`
+          : `${sim.stats.leaks} zombies got past you — switch lanes to cover them`
+      }</div>
       <div class="stat">Track covered: ${Math.round(sim.progress * 100)}% · Peak squad: ${sim.peak}</div>
       <div class="reward">+${reward} 🪙</div>
       ${fails >= 1 ? `<div class="stat">Enemies weakened (−${Math.min(50, fails * 10)}% HP)</div>` : ''}

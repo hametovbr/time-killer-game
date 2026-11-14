@@ -14,6 +14,9 @@ const DT = 1 / 60;
 const STATIC = process.env.STATIC === '1';
 
 let wins = 0;
+let bossLosses = 0;
+let reachedBoss = 0;
+let fightT = 0;
 for (let n = from; n <= to; n++) {
   const u = upg >= 0 ? upg : Math.floor(n / 3);
   const lvl = generateLevel(n);
@@ -29,10 +32,15 @@ for (let n = from; n <= to; n++) {
     sim.step(DT, STATIC ? { lane: 1 } : inp);
   }
   if (sim.state === 'won') wins++;
+  if (sim.boss.active) {
+    reachedBoss++;
+    fightT += sim.t - sim.bossStartT;
+    if (sim.state === 'lost') bossLosses++;
+  }
   console.log(
     `L${String(n).padStart(2)} ${lvl.type.padEnd(6)} d=${String(lvl.d).padStart(2)} T=${lvl.duration.toFixed(0)}s z=${lvl.enemies.length} ` +
       `${sim.state.padEnd(5)} t=${sim.t.toFixed(1).padStart(5)} wall=${sim.wall}/${sim.wallMax} squad=${sim.count}/${sim.peak} ` +
-      `kills=${sim.stats.kills} leaks=${sim.stats.leaks} ups=${sim.ups} w=${sim.weapon} boss=${Math.round(sim.boss.hp)}/${sim.boss.maxHp}`,
+      `kills=${sim.stats.kills} leaks=${sim.stats.leaks} ups=${sim.ups} w=${sim.weapon} boss=${Math.round(sim.boss.hp)}/${sim.boss.maxHp}${sim.boss.active ? ` fight=${(sim.t - sim.bossStartT).toFixed(1)}s` : ''}${sim.bossSmashed ? ' SMASHED' : ''}`,
   );
 }
-console.log(`wins ${wins}/${to - from + 1}`);
+console.log(`wins ${wins}/${to - from + 1} · reached boss ${reachedBoss} · lost to boss ${bossLosses} · avg fight ${(fightT / Math.max(1, reachedBoss)).toFixed(1)}s`);

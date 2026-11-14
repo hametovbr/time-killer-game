@@ -31,10 +31,17 @@ export interface CrateDef {
   hp: number;
 }
 export interface BossDef {
-  z: number;
   hp: number;
-  speed: number;
-  eat: number; // soldiers per second while in contact
+  /** Seconds the boss needs to walk from the top of the screen to the barricade (unblocked). */
+  approachT: number;
+  eat: number; // soldiers per second while it tramples the squad
+  switchEvery: [number, number]; // seconds between lane switches (min, max)
+  summonEvery: number; // seconds between minion packs
+  minions: number; // zombies per pack
+  minionHp: number;
+  minionSpeed: number;
+  minionPower: number;
+  enrage: boolean; // boss levels: second phase at 50% HP
 }
 export interface LevelDef {
   n: number;
@@ -66,7 +73,7 @@ const INTROS: Record<number, string> = {
   2: 'Red gates take soldiers away — avoid them',
   3: 'Shoot the 🔫 crate to get a better weapon',
   4: 'Shoot +/− gates — their number goes up!',
-  5: 'BOSS! Grow your squad before the finish line',
+  5: 'BOSS: it marches on your barricade and switches lanes — follow it and kill it in time!',
   6: 'Tip: Flank fire and Piercing rounds help you cover all three lanes',
   7: '÷ gates split your squad. Careful!',
   8: 'Yellow zombies switch lanes towards you',
@@ -190,12 +197,21 @@ export function generateLevel(n: number): LevelDef {
   }
 
   const length = T * RUN_SPEED;
-  const bossT = type === 'boss' ? 9 : 5;
+  // The boss is a DPS check with a deadline: it walks to the barricade and smashes it.
+  // It switches lanes (you must follow it) and summons minions into the other lanes (which you must also stop).
+  const isBoss = type === 'boss';
+  const approachT = isBoss ? 24 : 18;
   const boss: BossDef = {
-    z: length + 560,
-    hp: Math.round(expDps(T) * 0.85 * bossT),
-    speed: Math.min(60, 26 + d * 1.2),
-    eat: 6 + d * 0.6,
+    hp: Math.round(expDps(T) * approachT * (isBoss ? 0.5 : 0.42)),
+    approachT,
+    eat: Math.max(2, target(T) * HPC * 0.15),
+    switchEvery: isBoss ? [2.2, 3.4] : [3, 4.5],
+    summonEvery: isBoss ? 2.2 : 3,
+    minions: Math.min(8, 2 + Math.round(d * 0.12)),
+    minionHp: Math.max(1, Math.round(expDps(T) * hpK)),
+    minionSpeed: zSpeed,
+    minionPower: bite(T),
+    enrage: isBoss,
   };
 
   return {
