@@ -30,7 +30,8 @@ Platform: browser, mobile portrait first. No ads, no in-app purchases, no timers
 | Kill a zombie | +1 XP (brute +6) → level-up |
 | Gate +N / ×N | more soldiers = more firepower (soldiers^0.8) |
 | Gate −N / ÷N | fewer soldiers, but never below 1 |
-| Shoot a 🎯 gate | its number goes up — but those bullets aren't hitting zombies |
+| Shoot through a 🎯 gate | bullets **pass through** gates and pump their number on the way — gates never shield zombies (v3.2: blocking bullets made some leaks unavoidable). The trade-off is lane choice, not wasted bullets |
+| Break a 🔫 crate | leftover damage of the killing bullet carries on |
 | Shoot a 🔫 crate | weapon +1 tier |
 | Boss walks down its lane | standing in its way slows it to 30% but it eats soldiers; if it reaches the barricade — **instant defeat** |
 

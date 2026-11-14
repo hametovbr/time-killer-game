@@ -220,7 +220,7 @@ export function generateLevel(n: number): LevelDef {
     d,
     duration: T,
     length,
-    gatePoint: Math.max(1, expDps(T * 0.5) * 0.08),
+    gatePoint: Math.max(1, expDps(T * 0.5) * 0.15), // bullets pass through gates now, so pumping is slower
     gates,
     enemies: enemies.sort((a, b) => a.z - b.z),
     crates,

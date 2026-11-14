@@ -523,10 +523,12 @@ export class Sim {
         if (c.z - 18 > b.z || c.z + 18 < prev) continue;
         if (!best || c.z < best.z) best = { z: c.z, kind: 'c', ref: c };
       }
+      // Gates never block bullets: a bullet flying through a 🎯 gate pumps its number and keeps going,
+      // so zombies behind a gate row can always be shot (otherwise some leaks were unavoidable).
       for (const g of this.gates) {
         if (g.done || !g.shootable || g.lane !== lane) continue;
         if (g.z > b.z || g.z < prev) continue;
-        if (!best || g.z < best.z) best = { z: g.z, kind: 'g', ref: g };
+        this.applyHit('g', g, b);
       }
       if (this.boss.active && Math.abs(b.x - this.boss.x) < BOSS_R + 6) {
         const bz = this.boss.z - 30;
@@ -540,6 +542,12 @@ export class Sim {
           b.hit.push(e);
           if (b.pierce > 0) b.pierce--; // piercing: full damage carries on
           else if (b.dmg > hpBefore) b.dmg -= hpBefore; // overkill carries into the next zombie
+          else b.alive = false;
+        } else if (best.kind === 'c') {
+          const c = best.ref as Crate;
+          const hpBefore = c.hp;
+          this.applyHit('c', c, b);
+          if (b.dmg > hpBefore) b.dmg -= hpBefore; // breaking a crate doesn't waste the rest of the bullet
           else b.alive = false;
         } else {
           b.alive = false;

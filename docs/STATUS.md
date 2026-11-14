@@ -1,5 +1,11 @@
 # Status
 
+## v3.2 (2026-11-14) — no unavoidable leaks
+Feedback: gate rows across all lanes absorbed bullets, shielding zombies behind them until it was too late.
+- [x] Bullets pass through 🎯 gates (and still pump them); crates pass on leftover damage
+- [x] Gate pumping rate halved to compensate
+- [x] Result: leak rate for a near-perfect bot dropped from ~12% to ~6% of all zombies
+
 ## v3.1 (2026-11-14) — real boss fights
 Feedback: bosses were trivial; once at the finish you couldn't lose.
 - [x] Boss marches on the barricade — reaching it = defeat (DPS check with a deadline)
