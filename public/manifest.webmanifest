@@ -1,7 +1,7 @@
 {
   "name": "Lane Squad",
   "short_name": "Lane Squad",
-  "description": "Честная игра «как в рекламе»: отряд, три полосы, ворота-множители.",
+  "description": "The honest game from the ads: a squad, three lanes, multiplier gates.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

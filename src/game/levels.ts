@@ -59,15 +59,15 @@ export const UNLOCK = {
 };
 
 const INTROS: Record<number, string> = {
-  1: 'Веди пальцем: отряд встаёт на полосу под пальцем. Проходи синие ворота!',
-  2: 'Красные ворота отнимают солдат — обходи их',
-  3: 'Расстреляй ящик 🔫 — получишь оружие лучше',
-  4: 'Стреляй по воротам +/− — число на них растёт!',
-  5: 'БОСС! Набери отряд побольше до конца трассы',
-  6: 'Ящик ⭐ повышает ранг солдат — больше урона',
-  7: 'Ворота ÷ делят отряд. Осторожно!',
-  8: 'Некоторые зомби бегут на твою полосу',
-  10: 'Громилы: много HP, забирают 6 солдат',
+  1: 'Hold your finger over a lane — the squad runs there. Go through blue gates!',
+  2: 'Red gates take soldiers away — avoid them',
+  3: 'Shoot the 🔫 crate to get a better weapon',
+  4: 'Shoot +/− gates — their number goes up!',
+  5: 'BOSS! Grow your squad before the finish line',
+  6: 'A ⭐ crate promotes your soldiers — more damage',
+  7: '÷ gates split your squad. Careful!',
+  8: 'Some zombies switch to your lane',
+  10: 'Brutes: lots of HP, they take 6 soldiers',
 };
 
 export const levelType = (n: number): LevelType => (n % 5 === 0 ? 'boss' : 'normal');

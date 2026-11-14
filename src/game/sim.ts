@@ -340,7 +340,7 @@ export class Sim {
           label = WEAPONS[this.weapon].name.toUpperCase() + '!';
         } else {
           this.rank = Math.min(RANK_MUL.length - 1, this.rank + 1);
-          label = `РАНГ ${this.rank + 1}!`;
+          label = `RANK ${this.rank + 1}!`;
         }
         this.events.push({ t: 'crateOpen', x: LANES[c.lane], z: c.z, kind: c.kind, label });
       } else this.events.push({ t: 'crateHit', x: LANES[c.lane], z: c.z });

@@ -1,67 +1,67 @@
 # LANE SQUAD — Game Design Document (v2)
 
-> v1 («Mob Cannon», пушка в стиле Mob Control) заменена по фидбеку: нужен более простой геймплей **в три линии**, с врагами, мультипликаторами, апгрейдом юнитов/оружия и изменением их числа. Это жанр «squad runner» из рекламы Last War / Count Masters / «zombie gate shooter».
+> v1 ("Mob Cannon", a Mob Control-style cannon game) was replaced based on feedback: the goal is simpler **three-lane** gameplay with enemies, multipliers, unit/weapon upgrades and a changing squad size. This is the "squad runner" genre from Last War / Count Masters / "zombie gate shooter" ads.
 
-Платформа: браузер, мобильный портрет в приоритете. Без рекламы, без доната, без таймеров.
+Platform: browser, mobile portrait first. No ads, no in-app purchases, no timers.
 
-## 1. Ядро в одну фразу
-> Веди отряд по одной из трёх полос, проходи ворота, которые меняют число солдат, отстреливай зомби и ящики с апгрейдами, и добеги до босса с отрядом побольше.
+## 1. Core loop in one sentence
+> Steer your squad across three lanes, run through gates that change your soldier count, shoot zombies and upgrade crates, and reach the boss with the biggest squad you can.
 
-## 2. Управление
-- Держи палец (мышь) над нужной полосой: отряд перебегает под палец. Тап по полосе тоже работает.
-- Стрельба автоматическая, всегда вперёд по своей полосе.
-- ПК: ←/→ или A/D (на одну полосу), 1/2/3 (полоса сразу), Esc — пауза.
+## 2. Controls
+- Hold your finger (mouse) over a lane: the squad runs to it. Tapping a lane also works.
+- Shooting is automatic, always straight ahead in the current lane.
+- PC: ←/→ or A/D (one lane), 1/2/3 (jump to lane), Esc to pause.
 
-## 3. Поле
+## 3. Field
 ```
- ┌─────┬─────┬─────┐   ← БОСС (на всю ширину) после финишной черты
- │ 🧟  │     │ 🧟  │   ← зомби идут навстречу по полосам
- │[+12]│[×2] │[−8] │   ← ряд ворот: каждая полоса — свои ворота
- │     │ 📦  │     │   ← ящик 🔫/⭐ (расстрелять, пока не пробежал мимо)
- │     │ 👥  │     │   ← твой отряд (число над ним)
+ ┌─────┬─────┬─────┐   ← BOSS (full width) after the finish line
+ │ 🧟  │     │ 🧟  │   ← zombies walk towards you along the lanes
+ │[+12]│[×2] │[−8] │   ← a gate row: each lane has its own gate
+ │     │ 📦  │     │   ← 🔫/⭐ crate (shoot it before you run past)
+ │     │ 👥  │     │   ← your squad (count above it)
  └─────┴─────┴─────┘
 ```
 
-## 4. Механики (по одной новой каждые 1–3 уровня)
-| # | Элемент | Правило | С уровня |
+## 4. Mechanics (one new element every 1–3 levels)
+| # | Element | Rule | From level |
 |---|---|---|---|
-| 1 | Ворота **+N / ×N** (синие) | меняют число солдат при проходе | 1 |
-| 2 | Зомби | идут навстречу; убиваются пулями; дошёл до отряда — −1 солдат | 1 |
-| 3 | Ворота **−N** (красные) | отнимают солдат; 0 солдат — проигрыш | 2 |
-| 4 | Ящик 🔫 | расстрелял — оружие +1 уровень (на этот забег) | 3 |
-| 5 | Простреливаемые ворота 🎯 | пули по воротам +/− повышают число («−10» можно прострелить до плюса) | 4 |
-| 6 | Ящик ⭐ | ранг солдат +1 → множитель урона | 6 |
-| 7 | Ворота **÷2** | делят отряд | 7 |
-| + | Зомби-преследователи | перебегают на твою полосу | 8 |
-| + | Громилы | много HP, забирают 6 солдат | 10 |
-| + | Ворота ×3 | | 12 |
-| ★ | Босс | в конце каждого уровня, ест солдат при контакте; убил — победа | 1 |
+| 1 | **+N / ×N** gates (blue) | change the soldier count when passed | 1 |
+| 2 | Zombies | walk towards you; killed by bullets; reaching the squad costs 1 soldier | 1 |
+| 3 | **−N** gates (red) | remove soldiers; 0 soldiers = defeat | 2 |
+| 4 | 🔫 crate | shoot it open → weapon +1 tier (for this run) | 3 |
+| 5 | Shootable gates 🎯 | bullets raise the number on +/− gates (a "−10" can be shot up into a plus) | 4 |
+| 6 | ⭐ crate | soldier rank +1 → damage multiplier | 6 |
+| 7 | **÷2** gates | split the squad | 7 |
+| + | Chasers | switch to your lane | 8 |
+| + | Brutes | lots of HP, take 6 soldiers | 10 |
+| + | ×3 gates | | 12 |
+| ★ | Boss | at the end of every level; eats soldiers on contact; kill it to win | 1 |
 
-**Оружие (ящики 🔫):** Пистолет → Автомат → Дробовик → Винтовка → Пулемёт → Лазер.
-**Ранг (ящики ⭐):** Рядовой ×1 → Ефрейтор ×1.3 → Сержант ×1.7 → Лейтенант ×2.2 → Капитан ×2.9 → Майор ×3.8.
-**Огневая мощь** = `солдаты^0.8 × скорострельность × урон оружия × ранг × апгрейд урона`. Степень 0.8 — чтобы ×-ворота радовали, но не обнуляли сложность.
+**Weapons (🔫 crates):** Pistol → SMG → Shotgun → Rifle → Minigun → Laser.
+**Ranks (⭐ crates):** Private ×1 → Corporal ×1.3 → Sergeant ×1.7 → Lieutenant ×2.2 → Captain ×2.9 → Major ×3.8.
+**Firepower** = `soldiers^0.8 × fire rate × weapon damage × rank × damage upgrade`. The 0.8 exponent keeps ×-gates exciting without trivialising difficulty.
 
-Главная развилка каждого момента: **полоса с лучшими воротами vs полоса без зомби vs полоса с ящиком**. Одно решение за раз, читается за секунду.
+The key decision at every moment: **the lane with the best gate vs the lane without zombies vs the lane with a crate**. One decision at a time, readable in a second.
 
-## 5. Уровни — «пила»
-- Уровень = 9–20 «битов» (ряд ворот / группа зомби / ящик с охраной), потом финиш и босс. Длительность 30–60 сек.
-- Каждый **5-й** — **БОСС-уровень**: длиннее, босс ~1.7× толще. После него — уровень-передышка.
-- Генератор детерминированный (сид = номер уровня) и бесконечный.
-- Числа на воротах подбираются под **целевую кривую размера отряда** (от стартового до `25 + 7n`), HP зомби и босса — под ожидаемую огневую мощь при ожидаемых апгрейдах. Первый ряд ворот всегда без минусов; минус-ворота не убивают отряд, идущий по целевой кривой.
+## 5. Levels — sawtooth
+- A level is 9–20 "beats" (gate row / zombie group / guarded crate), then the finish line and the boss. 30–60 seconds each.
+- Every **5th** level is a **BOSS level**: longer, with a boss ~1.7× tougher. The level after it is a breather.
+- The generator is deterministic (seed = level number) and endless.
+- Gate values follow a **target squad-size curve** (from the starting squad up to `25 + 7n`); zombie and boss HP follow the expected firepower given expected upgrades. The first gate row never has negative gates; negative gates never wipe out a squad that is on the target curve.
 
-## 6. Мета-слой
-- **Монеты** за победу: `(30 + 8n + 0.3·отряд_в_конце) × звёзды × доход`.
-- **Звёзды:** доля отряда, дожившая до конца от пика (≥60% — 3★, ≥30% — 2★).
-- **Постоянные апгрейды:** Стартовый отряд (+1), Оружие на старте, Урон (+10%), Доход (+15%).
-- **Поражение** даёт монеты пропорционально пройденной трассе и **адаптивно облегчает** уровень: −10% HP врагов за каждое поражение подряд (до −40%).
+## 6. Meta progression
+- **Coins** per win: `(30 + 8n + 0.3·squad_at_end) × stars × income`.
+- **Stars:** share of the peak squad that survived to the end (≥60% — 3★, ≥30% — 2★).
+- **Permanent upgrades:** Starting squad (+1), Starting weapon, Damage (+10%), Income (+15%).
+- **A defeat** still pays coins proportional to the track covered and **adaptively eases** the level: −10% enemy HP per consecutive loss (up to −40%).
 
 ## 7. Game feel
-Всплывающие «+12/−8» и вспышка на воротах, частицы при попаданиях и убийствах, hit-stop и тряска на ящиках/громилах/победе, «поп» панели оружия при апгрейде, бег отряда с покачиванием, свой звук у каждого оружия, вибрация на Android, опция «меньше тряски».
+Pop-up "+12/−8" numbers and a screen flash on gates, particles on hits and kills, hit-stop and screen shake on crates/brutes/victory, a "pop" of the weapon panel on upgrades, a bobbing running squad, a distinct sound per weapon, vibration on Android, and a "reduce screen shake" option.
 
-## 8. Баланс (бот, `npm run sim`)
-- Бот точности 0.8 с ожидаемыми апгрейдами: 38/40 уровней с первой попытки.
-- Бот 0.95: 40/40.
-- Без апгрейдов уровни 10–30: ~9/21 — мета-слой действительно нужен.
+## 8. Balance (bot, `npm run sim`)
+- Bot with 0.8 accuracy and expected upgrades: 38/40 levels on the first try.
+- Bot with 0.95 accuracy: 40/40.
+- Without upgrades, levels 10–30: ~9/21 — the meta layer genuinely matters.
 
-## 9. Сохранение и технологии
-`localStorage` (`lanesquad.save.v1`), PWA (офлайн, установка на экран). Vite + TypeScript + Canvas 2D; логика `src/game/sim.ts` отделена от рендера; `?autoplay` в URL — игра играет сама (демо).
+## 9. Save and tech
+`localStorage` (`lanesquad.save.v1`), PWA (offline, installable). Vite + TypeScript + Canvas 2D; logic in `src/game/sim.ts` is separate from rendering; `?autoplay` in the URL makes the game play itself (demo).

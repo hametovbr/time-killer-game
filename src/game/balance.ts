@@ -7,15 +7,15 @@ export interface Weapon {
 }
 
 export const WEAPONS: Weapon[] = [
-  { name: 'Пистолет', icon: '🔫', rate: 2.2, dmg: 1, color: '#ffe36b' },
-  { name: 'Автомат', icon: '🔫', rate: 4.5, dmg: 0.9, color: '#ffd04a' },
-  { name: 'Дробовик', icon: '💥', rate: 2.6, dmg: 2.6, color: '#ffa94a' },
-  { name: 'Винтовка', icon: '🎯', rate: 5, dmg: 1.7, color: '#ff8a4a' },
-  { name: 'Пулемёт', icon: '⚙️', rate: 10, dmg: 1.2, color: '#ff6b4a' },
-  { name: 'Лазер', icon: '⚡', rate: 8, dmg: 2.4, color: '#7af0ff' },
+  { name: 'Pistol', icon: '🔫', rate: 2.2, dmg: 1, color: '#ffe36b' },
+  { name: 'SMG', icon: '🔫', rate: 4.5, dmg: 0.9, color: '#ffd04a' },
+  { name: 'Shotgun', icon: '💥', rate: 2.6, dmg: 2.6, color: '#ffa94a' },
+  { name: 'Rifle', icon: '🎯', rate: 5, dmg: 1.7, color: '#ff8a4a' },
+  { name: 'Minigun', icon: '⚙️', rate: 10, dmg: 1.2, color: '#ff6b4a' },
+  { name: 'Laser', icon: '⚡', rate: 8, dmg: 2.4, color: '#7af0ff' },
 ];
 export const RANK_MUL = [1, 1.3, 1.7, 2.2, 2.9, 3.8];
-export const RANK_NAMES = ['Рядовой', 'Ефрейтор', 'Сержант', 'Лейтенант', 'Капитан', 'Майор'];
+export const RANK_NAMES = ['Private', 'Corporal', 'Sergeant', 'Lieutenant', 'Captain', 'Major'];
 
 /** Firepower grows sub-linearly with headcount: ×-gates feel great but don't trivialise everything. */
 export const squadPower = (count: number) => Math.pow(Math.max(0, count), 0.8);
@@ -35,10 +35,10 @@ export interface UpgradeInfo {
 }
 
 export const UPGRADES: UpgradeInfo[] = [
-  { id: 'squad', title: 'Стартовый отряд', icon: '👥', max: 20, baseCost: 30, growth: 1.42, describe: (l) => `${startSquad(l)} солд.` },
-  { id: 'weapon', title: 'Оружие на старте', icon: '🔫', max: WEAPONS.length - 1, baseCost: 150, growth: 2.6, describe: (l) => WEAPONS[l].name },
-  { id: 'damage', title: 'Урон', icon: '💪', max: 25, baseCost: 40, growth: 1.38, describe: (l) => `+${Math.round((damageMul(l) - 1) * 100)}%` },
-  { id: 'income', title: 'Доход', icon: '💰', max: 15, baseCost: 50, growth: 1.45, describe: (l) => `+${Math.round((incomeMul(l) - 1) * 100)}% монет` },
+  { id: 'squad', title: 'Starting squad', icon: '👥', max: 20, baseCost: 30, growth: 1.42, describe: (l) => `${startSquad(l)} soldiers` },
+  { id: 'weapon', title: 'Starting weapon', icon: '🔫', max: WEAPONS.length - 1, baseCost: 150, growth: 2.6, describe: (l) => WEAPONS[l].name },
+  { id: 'damage', title: 'Damage', icon: '💪', max: 25, baseCost: 40, growth: 1.38, describe: (l) => `+${Math.round((damageMul(l) - 1) * 100)}%` },
+  { id: 'income', title: 'Income', icon: '💰', max: 15, baseCost: 50, growth: 1.45, describe: (l) => `+${Math.round((incomeMul(l) - 1) * 100)}% coins` },
 ];
 
 export const startSquad = (l: number) => 3 + l;

@@ -1,20 +1,21 @@
-# Статус
+# Status
 
-## v2.0 «Lane Squad» (2026-11-14)
-Геймплей переделан по фидбеку: три полосы, враги, мультипликаторы, апгрейд оружия/ранга, число солдат.
-- [x] Ядро: 3 полосы, ворота +/−/×/÷, автострельба, зомби, босс в конце
-- [x] Простреливаемые ворота, ящики 🔫 (оружие ×6 тиров) и ⭐ (ранг ×6)
-- [x] Преследователи, громилы, ворота ×3
-- [x] Процедурные детерминированные уровни, «пила» сложности, босс-уровни каждые 5
-- [x] Мета: монеты, звёзды, 4 апгрейда, адаптивное облегчение
-- [x] Juice, звук, вибрация, PWA, сохранение
-- [x] Бот + `npm run sim`, `?autoplay`
-- [x] Публикация в ветку gh-pages через Actions
+## v2.0 "Lane Squad" (2026-11-14)
+Gameplay reworked based on feedback: three lanes, enemies, multipliers, weapon/rank upgrades, squad size changes.
+- [x] Core: 3 lanes, +/−/×/÷ gates, auto-fire, zombies, end-of-level boss
+- [x] Shootable gates, 🔫 crates (6 weapon tiers) and ⭐ crates (6 ranks)
+- [x] Chasers, brutes, ×3 gates
+- [x] Deterministic procedural levels, sawtooth difficulty, boss levels every 5
+- [x] Meta: coins, stars, 4 upgrades, adaptive easing after losses
+- [x] Juice, sound, vibration, PWA, local save
+- [x] Bot + `npm run sim`, `?autoplay`
+- [x] Publishing to the `gh-pages` branch via Actions
+- [x] MIT license, everything in English
 
-## v1.0 «Mob Cannon» — заменена (в истории git)
+## v1.0 "Mob Cannon" — replaced (kept in git history)
 
-## Бэклог / идеи
-- Скины солдат за звёзды
-- Ежедневный уровень с сидом по дате
-- Препятствия на полосах (пилы, бочки), вертолёт-союзник
-- Бонус-уровень «без врагов, только ворота» каждые 10 уровней
+## Backlog / ideas
+- Soldier skins unlocked with stars
+- Daily level seeded by date
+- Lane obstacles (saws, barrels), helicopter ally
+- Bonus "gates only, no enemies" level every 10 levels

@@ -299,7 +299,7 @@ export class Renderer {
     this.rr(x - bw / 2, by, Math.max(8, bw * Math.max(0, b.hp / b.maxHp)), 14, 7);
     c.fill();
     this.label(`${Math.ceil(b.hp)}`, x, by + 7, 13);
-    this.label(sim.level.type === 'boss' ? '👑 БОСС' : 'БОСС', x, by - 14, 15, '#ffd54a');
+    this.label(sim.level.type === 'boss' ? '👑 BOSS' : 'BOSS', x, by - 14, 15, '#ffd54a');
   }
 
   private drawBullets(sim: Sim, sy: (z: number) => number) {

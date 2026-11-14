@@ -1,7 +1,7 @@
 {
-  "name": "mob-cannon",
+  "name": "lane-squad",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -14,5 +14,7 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"
-  }
+  },
+  "license": "MIT",
+  "description": "Lane Squad \u2014 the honest browser version of the 3-lane squad-runner game from mobile ads"
 }

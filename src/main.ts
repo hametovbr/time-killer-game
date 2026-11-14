@@ -101,7 +101,7 @@ function simConfig(n: number) {
 }
 
 function levelLabel(n: number, l: LevelDef) {
-  return l.type === 'boss' ? `👑 Босс ${n}` : `Уровень ${n}`;
+  return l.type === 'boss' ? `👑 Boss ${n}` : `Level ${n}`;
 }
 
 function startLevel(n: number) {
@@ -145,10 +145,10 @@ function pause() {
   mode = 'paused';
   pointerDown = false;
   showPanel(`
-    <h2>Пауза</h2>
-    <button class="btn big" data-act="resume">Продолжить</button>
-    <button class="btn blue" data-act="restart">Заново</button>
-    <button class="btn grey" data-act="menu">В меню</button>
+    <h2>Paused</h2>
+    <button class="btn big" data-act="resume">Resume</button>
+    <button class="btn blue" data-act="restart">Restart</button>
+    <button class="btn grey" data-act="menu">Main menu</button>
   `);
 }
 
@@ -355,7 +355,7 @@ screen.addEventListener('click', (e) => {
         showMenu();
       } else {
         target.dataset.confirm = '1';
-        target.textContent = 'Точно? Нажми ещё раз';
+        target.textContent = 'Sure? Tap again';
       }
       break;
   }
@@ -373,14 +373,14 @@ function showMenu() {
   const totalStars = Object.values(save.stars).reduce((a, b) => a + b, 0);
   showPanel(`
     <div class="title">LANE<br>SQUAD</div>
-    <div class="subtitle">та самая игра из рекламы — только честная</div>
+    <div class="subtitle">the game from the ads — but honest</div>
     <div class="coins-big">🪙 ${save.coins} &nbsp; ⭐ ${totalStars}</div>
     <button class="btn big" data-act="play">▶ ${levelLabel(n, generateLevel(n))}</button>
     <div class="row">
-      <button class="btn blue" data-act="upgrades">⬆ Улучшения${can ? ` (${can})` : ''}</button>
+      <button class="btn blue" data-act="upgrades">⬆ Upgrades${can ? ` (${can})` : ''}</button>
       <button class="btn grey" data-act="settings" style="flex:0 0 64px">⚙</button>
     </div>
-    <div class="small">Без рекламы. Без доната. Прогресс хранится в браузере.</div>
+    <div class="small">No ads. No in-app purchases. Progress is saved in your browser.</div>
   `);
 }
 
@@ -390,16 +390,16 @@ function showResult(won: boolean, stars: number, reward: number) {
   const can = affordableUpgrades();
   if (won) {
     showPanel(`
-      ${level.type === 'boss' ? '<div class="badge">БОСС ПОВЕРЖЕН</div>' : ''}
-      <h2>Победа!</h2>
+      ${level.type === 'boss' ? '<div class="badge">BOSS DEFEATED</div>' : ''}
+      <h2>Victory!</h2>
       <div class="stars">${[1, 2, 3].map((i) => `<span data-s="${i}">⭐</span>`).join('')}</div>
       <div class="reward">+${reward} 🪙</div>
-      <div class="stat">Отряд: ${sim.count} (пик ${sim.peak}) · Зомби: ${sim.stats.kills}</div>
+      <div class="stat">Squad: ${sim.count} (peak ${sim.peak}) · Zombies: ${sim.stats.kills}</div>
       <div class="stat">${WEAPONS[sim.weapon].icon} ${WEAPONS[sim.weapon].name} · ⭐ ${RANK_NAMES[sim.rank]}</div>
-      <button class="btn big" data-act="next">Дальше ▶</button>
+      <button class="btn big" data-act="next">Next ▶</button>
       <div class="row">
-        <button class="btn blue" data-act="upgrades" data-back="result">⬆ Улучшения${can ? ` (${can})` : ''}</button>
-        <button class="btn grey" data-act="menu">Меню</button>
+        <button class="btn blue" data-act="upgrades" data-back="result">⬆ Upgrades${can ? ` (${can})` : ''}</button>
+        <button class="btn grey" data-act="menu">Menu</button>
       </div>
     `);
     screen.querySelectorAll<HTMLElement>('.stars span').forEach((el) => {
@@ -409,15 +409,15 @@ function showResult(won: boolean, stars: number, reward: number) {
   } else {
     const fails = save.fails[level.n] ?? 0;
     showPanel(`
-      <h2>Отряд пал 💀</h2>
-      <div class="stat">Пройдено трассы: ${Math.round(sim.progress * 100)}% · Пик отряда: ${sim.peak}</div>
+      <h2>Squad wiped out 💀</h2>
+      <div class="stat">Track covered: ${Math.round(sim.progress * 100)}% · Peak squad: ${sim.peak}</div>
       <div class="reward">+${reward} 🪙</div>
-      ${fails >= 1 ? `<div class="stat">Враги стали слабее (−${Math.min(40, fails * 10)}% HP)</div>` : ''}
-      ${can ? `<div class="stat">💡 Доступно улучшений: ${can}</div>` : ''}
-      <button class="btn big" data-act="retry">Ещё раз ↻</button>
+      ${fails >= 1 ? `<div class="stat">Enemies weakened (−${Math.min(40, fails * 10)}% HP)</div>` : ''}
+      ${can ? `<div class="stat">💡 Upgrades available: ${can}</div>` : ''}
+      <button class="btn big" data-act="retry">Try again ↻</button>
       <div class="row">
-        <button class="btn blue" data-act="upgrades" data-back="result">⬆ Улучшения</button>
-        <button class="btn grey" data-act="menu">Меню</button>
+        <button class="btn blue" data-act="upgrades" data-back="result">⬆ Upgrades</button>
+        <button class="btn grey" data-act="menu">Menu</button>
       </div>
     `);
   }
@@ -434,7 +434,7 @@ function showUpgrades(back: string) {
         <div class="info">
           <div class="name">${u.title}</div>
           <div class="desc">${u.describe(lvl)}${maxed ? '' : ` → <b>${u.describe(lvl + 1)}</b>`}</div>
-          <div class="lvl">ур. ${lvl}/${u.max}</div>
+          <div class="lvl">lvl ${lvl}/${u.max}</div>
         </div>
         <button class="btn" data-act="buy" data-id="${u.id}" ${maxed || save.coins < cost ? 'disabled' : ''}>
           ${maxed ? 'MAX' : `🪙 ${cost}`}
@@ -443,10 +443,10 @@ function showUpgrades(back: string) {
   }).join('');
   const backBtn =
     back === 'result'
-      ? `<button class="btn big" data-act="${sim.state === 'won' ? 'next' : 'retry'}">${sim.state === 'won' ? 'Дальше ▶' : 'Ещё раз ↻'}</button>`
-      : `<button class="btn grey" data-act="menu">Назад</button>`;
+      ? `<button class="btn big" data-act="${sim.state === 'won' ? 'next' : 'retry'}">${sim.state === 'won' ? 'Next ▶' : 'Try again ↻'}</button>`
+      : `<button class="btn grey" data-act="menu">Back</button>`;
   showPanel(`
-    <h2>Улучшения</h2>
+    <h2>Upgrades</h2>
     <div class="coins-big">🪙 ${save.coins}</div>
     ${items}
     ${backBtn}
@@ -459,15 +459,15 @@ function showSettings() {
     `<div class="toggle ${save.settings[key] ? 'on' : ''}" data-act="toggle" data-key="${key}">${label}<div class="sw"></div></div>`;
   const s = save.stats;
   showPanel(`
-    <h2>Настройки</h2>
-    ${t('sound', '🔊 Звук')}
-    ${t('vibration', '📳 Вибрация')}
-    ${t('reduceShake', '🫨 Меньше тряски')}
-    <div class="stat" style="margin-top:12px">Сыграно: ${s.played} · Побед: ${s.won}</div>
-    <div class="stat">Зомби всего: ${s.kills} · Рекорд отряда: ${s.bestPeak}</div>
-    <button class="btn red" data-act="reset">Сбросить прогресс</button>
-    <button class="btn grey" data-act="menu">Назад</button>
-    <div class="small">Управление: держи палец/мышь над нужной полосой. ПК: ←/→ (A/D) или 1/2/3, Esc — пауза.</div>
+    <h2>Settings</h2>
+    ${t('sound', '🔊 Sound')}
+    ${t('vibration', '📳 Vibration')}
+    ${t('reduceShake', '🫨 Reduce screen shake')}
+    <div class="stat" style="margin-top:12px">Played: ${s.played} · Won: ${s.won}</div>
+    <div class="stat">Zombies total: ${s.kills} · Best squad: ${s.bestPeak}</div>
+    <button class="btn red" data-act="reset">Reset progress</button>
+    <button class="btn grey" data-act="menu">Back</button>
+    <div class="small">Controls: hold your finger/mouse over a lane. PC: ←/→ (A/D) or 1/2/3, Esc to pause.</div>
   `);
 }
 
