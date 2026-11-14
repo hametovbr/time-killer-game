@@ -5,7 +5,7 @@
 import { generateLevel } from '../src/game/levels';
 import { Sim } from '../src/game/sim';
 import { Bot } from '../src/game/bot';
-import { startSquad, damageMul, barricadeHp, WEAPONS } from '../src/game/balance';
+import { startSquad, damageMul, barricadeHp, MAX_START_WEAPON } from '../src/game/balance';
 
 const [from = 1, to = 30, skill = 0.8, upg = -1] = process.argv.slice(2).map(Number);
 const DT = 1 / 60;
@@ -22,10 +22,12 @@ for (let n = from; n <= to; n++) {
   const lvl = generateLevel(n);
   const sim = new Sim(lvl, {
     startCount: startSquad(Math.min(20, u)),
-    startWeapon: Math.min(WEAPONS.length - 1, Math.floor(n / 9)),
+    startWeapon: Number(process.env.WEAPON ?? Math.min(MAX_START_WEAPON, Math.floor(n / 9))),
     dmgMul: damageMul(Math.min(25, u)),
     wallHp: barricadeHp(Math.min(20, u)),
   });
+  if (process.env.NOCRATE) sim.crates = [];
+  if (process.env.NOPERKWEAPON) sim.perks.weapon = 99;
   const bot = new Bot(skill);
   while (sim.state === 'playing' && sim.t < 240) {
     const inp = bot.think(sim, DT);

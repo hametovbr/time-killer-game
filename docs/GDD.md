@@ -54,7 +54,26 @@ The key decision every second: **which lane to defend right now** — the one wi
 XP needed: `18 + 14k` for the k-th level-up → ~4–9 level-ups per level, front-loaded.
 Overkill damage carries into the next zombie, so a big squad mows through hordes.
 
-Weapons: Pistol → SMG → Shotgun → Rifle → Minigun → Laser.
+### Weapon ladder (v3.3)
+Each tier adds either raw power or a **mechanic that helps with the real problem — covering three lanes and hordes**. The crate always shows what's inside (the next weapon's icon).
+
+| # | Weapon | Mechanic |
+|---|---|---|
+| 1 | 🔫 Pistol | basic |
+| 2 | 🔫 SMG | double fire rate |
+| 3 | 💥 Shotgun | pellets spill into neighbouring lanes (12%) |
+| 4 | 🎯 Rifle | every shot pierces 1 zombie |
+| 5 | ⚙️ Minigun | very high fire rate |
+| 6 | ⚡ Laser | beam pierces the whole lane |
+| 7 | 🚀 Rocket launcher | explosion, radius 62, 85% splash — shreds hordes |
+| 8 | 🌩️ Tesla coil | lightning chains to 5 more zombies within 150 px, **across lanes** |
+| 9 | 💣 Artillery | splash shells in your lane **and both other lanes** (60%) |
+
+- Permanent "Starting weapon" upgrade goes up to the Laser; tiers 7–9 only come from crates and the "New weapon" perk during a run.
+- With the top weapon, a crate becomes a 🎁 **supply drop** — a free level-up (pick 1 of 3).
+- The "New weapon" perk card shows the next weapon and its mechanic.
+- Explosive and chain weapons fire fewer, heavier projectiles; rockets/shells hitting the boss also blast its minions.
+- Balance check: `NOCRATE=1 NOPERKWEAPON=1 WEAPON=n npm run sim -- 15 24` plays with a fixed weapon.
 
 ## 6. Boss fight (v3.1)
 Playtest feedback: bosses were trivial — once you reached the finish you couldn't lose. The boss is now a **DPS check with a deadline** plus a split-attention test:

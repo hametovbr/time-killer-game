@@ -99,7 +99,8 @@ function simConfig(n: number) {
   const fails = save.fails[n] ?? 0;
   return {
     startCount: startSquad(save.upgrades.squad),
-    startWeapon: save.upgrades.weapon,
+    // ?weapon=N (debug/demo) overrides the starting weapon.
+    startWeapon: Math.min(WEAPONS.length - 1, Number(new URLSearchParams(location.search).get('weapon') ?? save.upgrades.weapon)),
     dmgMul: damageMul(save.upgrades.damage),
     wallHp: barricadeHp(save.upgrades.wall),
     ease: Math.max(0.5, 1 - fails * 0.1),
@@ -221,7 +222,8 @@ function handleEvents(events: GameEvent[], audible: boolean) {
         break;
       case 'crateOpen':
         fx.burst(e.x, screenY(e.z) - 26, '#ffd54a', 40, 220, 3.5);
-        fx.text(W / 2, SQUAD_Y - 110, e.label, '#ffd54a', 30);
+        fx.text(W / 2, SQUAD_Y - 120, e.label, '#ffd54a', 28);
+        fx.text(W / 2, SQUAD_Y - 88, e.trait, '#fff3c4', 15);
         fx.addShake(6);
         fx.addHitStop(70);
         if (audible) {
@@ -247,6 +249,16 @@ function handleEvents(events: GameEvent[], audible: boolean) {
         break;
       case 'bossArrive':
         if (audible) sfx.roar();
+        break;
+      case 'boom':
+        fx.ring(e.x, screenY(e.z), e.r);
+        fx.burst(e.x, screenY(e.z), '#ffb347', 6, 140, 3);
+        fx.addShake(1);
+        if (audible) sfx.pop();
+        break;
+      case 'chain':
+        fx.bolt(e.pts.map((p) => [p.x, screenY(p.z)] as [number, number]));
+        if (audible) sfx.tick();
         break;
       case 'bossTelegraph':
         if (audible) sfx.tick();
@@ -329,7 +341,11 @@ function showLevelUp() {
       .map(
         (p, i) => `<button class="perk" data-i="${i}">
           <div class="pi">${p.icon}</div>
-          <div><div class="pt">${p.title}</div><div class="pd">${p.describe(sim.perks[p.id])}</div>
+          <div><div class="pt">${p.title}</div><div class="pd">${
+            p.id === 'weapon' && WEAPONS[sim.weapon + 1]
+              ? `${WEAPONS[sim.weapon + 1].icon} ${WEAPONS[sim.weapon + 1].name}: ${WEAPONS[sim.weapon + 1].trait}`
+              : p.describe(sim.perks[p.id])
+          }</div>
           ${p.max < 99 ? `<div class="pl">${sim.perks[p.id]}/${p.max}</div>` : ''}</div>
         </button>`,
       )

@@ -24,10 +24,12 @@ export type GameEvent =
   | { t: 'squadHit'; x: number; lost: number }
   | { t: 'leak'; x: number; dmg: number }
   | { t: 'crateHit'; x: number; z: number }
-  | { t: 'crateOpen'; x: number; z: number; label: string }
+  | { t: 'crateOpen'; x: number; z: number; label: string; trait: string }
   | { t: 'levelUp' }
   | { t: 'perk'; label: string }
   | { t: 'volley'; weapon: number }
+  | { t: 'boom'; x: number; z: number; r: number }
+  | { t: 'chain'; pts: { x: number; z: number }[] }
   | { t: 'bossHit'; x: number; dmg: number }
   | { t: 'bossArrive' }
   | { t: 'bossTelegraph'; lane: number }
@@ -83,6 +85,8 @@ export interface Bullet {
   pierce: number;
   hit: Enemy[];
   alive: boolean;
+  splash?: { r: number; mul: number };
+  chain?: { jumps: number; r: number; mul: number };
 }
 export interface Boss {
   z: number;
@@ -476,27 +480,85 @@ export class Sim {
 
   private volley(curLane: number) {
     if (this.count <= 0) return;
+    const w = WEAPONS[this.weapon];
     const total = this.volleyDamage;
     const k = Math.min(this.weapon === 2 ? 7 : 5, Math.ceil(this.count / 4));
     const spread = Math.min(LANE_W * 0.7, 10 + Math.sqrt(this.count) * 8);
-    const pierce = this.perks.pierce;
-    for (let i = 0; i < k; i++) {
-      const x = this.squadX + (k === 1 ? 0 : (i / (k - 1) - 0.5) * spread) + (Math.random() - 0.5) * 6;
-      this.bullets.push({ x, z: this.dist + 14, z0: this.dist, dmg: total / k, pierce, hit: [], alive: true });
+    const pierce = this.perks.pierce + (w.pierce ?? 0);
+    const shot = (x: number, dmg: number, extra: Partial<Bullet> = {}) =>
+      this.bullets.push({ x, z: this.dist + 14, z0: this.dist, dmg, pierce, hit: [], alive: true, splash: w.splash, chain: w.chain, ...extra });
+    // Explosive / chain weapons fire fewer, heavier projectiles.
+    const n = w.splash || w.chain ? Math.min(3, k) : k;
+    for (let i = 0; i < n; i++) {
+      const x = this.squadX + (n === 1 ? 0 : (i / (n - 1) - 0.5) * spread) + (Math.random() - 0.5) * 6;
+      shot(x, total / n);
     }
-    // Flank fire: a couple of bullets into each neighbouring lane.
+    const neighbours = [curLane - 1, curLane + 1].filter((l) => l >= 0 && l <= 2);
+    // Shotgun pellets spill into neighbouring lanes.
+    if (w.side) for (const l of neighbours) shot(LANES[l] + (Math.random() - 0.5) * 30, total * w.side);
+    // Artillery shells every other lane.
+    if (w.barrage) for (const l of [0, 1, 2]) if (l !== curLane) shot(LANES[l] + (Math.random() - 0.5) * 20, total * w.barrage);
+    // Flank fire perk: a couple of bullets into each neighbouring lane.
     const side = SIDE_MUL[this.perks.side];
     if (side > 0) {
-      for (const l of [curLane - 1, curLane + 1]) {
-        if (l < 0 || l > 2) continue;
-        for (let i = 0; i < 2; i++) {
-          const x = LANES[l] + (i - 0.5) * 24;
-          this.bullets.push({ x, z: this.dist + 14, z0: this.dist, dmg: (total * side) / 2, pierce, hit: [], alive: true });
-        }
+      for (const l of neighbours) {
+        for (let i = 0; i < 2; i++) shot(LANES[l] + (i - 0.5) * 24, (total * side) / 2);
       }
     }
     this.recoil = 1;
     this.events.push({ t: 'volley', weapon: this.weapon });
+  }
+
+  /** Deal damage to a zombie; returns true if it died. */
+  private damageEnemy(e: Enemy, dmg: number): boolean {
+    e.hp -= dmg;
+    e.flash = 1;
+    const kill = e.hp <= 0;
+    if (kill) {
+      e.alive = false;
+      this.stats.kills++;
+      this.gainXp(e.xp);
+    }
+    this.events.push({ t: 'hit', x: e.x, z: e.z, kill, big: e.big });
+    return kill;
+  }
+
+  private explode(x: number, z: number, splash: { r: number; mul: number }, dmg: number, skip: Enemy | null) {
+    for (const o of this.enemies) {
+      if (!o.alive || o.passed || o === skip) continue;
+      const dx = o.x - x;
+      const dz = o.z - z;
+      if (dx * dx + dz * dz <= splash.r * splash.r) this.damageEnemy(o, dmg * splash.mul);
+    }
+    this.events.push({ t: 'boom', x, z, r: splash.r });
+  }
+
+  private arc(from: Enemy, chain: { jumps: number; r: number; mul: number }, dmg: number) {
+    const pts = [{ x: from.x, z: from.z }];
+    const hit = new Set<Enemy>([from]);
+    let cur = from;
+    let d = dmg;
+    for (let j = 0; j < chain.jumps; j++) {
+      let next: Enemy | null = null;
+      let best = chain.r * chain.r;
+      for (const o of this.enemies) {
+        if (!o.alive || o.passed || hit.has(o)) continue;
+        const dx = o.x - cur.x;
+        const dz = o.z - cur.z;
+        const dd = dx * dx + dz * dz;
+        if (dd < best) {
+          best = dd;
+          next = o;
+        }
+      }
+      if (!next) break;
+      d *= chain.mul;
+      hit.add(next);
+      pts.push({ x: next.x, z: next.z });
+      this.damageEnemy(next, d);
+      cur = next;
+    }
+    if (pts.length > 1) this.events.push({ t: 'chain', pts });
   }
 
   private moveBullets(dt: number) {
@@ -538,9 +600,15 @@ export class Sim {
         if (best.kind === 'e') {
           const e = best.ref as Enemy;
           const hpBefore = e.hp;
-          this.applyHit('e', e, b);
+          this.damageEnemy(e, b.dmg);
           b.hit.push(e);
-          if (b.pierce > 0) b.pierce--; // piercing: full damage carries on
+          if (b.splash) {
+            this.explode(e.x, e.z, b.splash, b.dmg, e);
+            b.alive = false;
+          } else if (b.chain) {
+            this.arc(e, b.chain, b.dmg);
+            b.alive = false;
+          } else if (b.pierce > 0) b.pierce--; // piercing: full damage carries on
           else if (b.dmg > hpBefore) b.dmg -= hpBefore; // overkill carries into the next zombie
           else b.alive = false;
         } else if (best.kind === 'c') {
@@ -552,6 +620,8 @@ export class Sim {
         } else {
           b.alive = false;
           this.applyHit(best.kind, best.ref, b);
+          // Rockets/shells hitting the boss also blast the minions around it.
+          if (best.kind === 'b' && b.splash) this.explode(b.x, this.boss.z - 30, b.splash, b.dmg, null);
         }
       } else if (b.z - b.z0 > FIRE_RANGE) b.alive = false;
     }
@@ -560,16 +630,7 @@ export class Sim {
 
   private applyHit(kind: 'e' | 'g' | 'c' | 'b', ref: Enemy | Gate | Crate | null, b: Bullet) {
     if (kind === 'e') {
-      const e = ref as Enemy;
-      e.hp -= b.dmg;
-      e.flash = 1;
-      const kill = e.hp <= 0;
-      if (kill) {
-        e.alive = false;
-        this.stats.kills++;
-        this.gainXp(e.xp);
-      }
-      this.events.push({ t: 'hit', x: e.x, z: e.z, kill, big: e.big });
+      this.damageEnemy(ref as Enemy, b.dmg);
     } else if (kind === 'g') {
       const g = ref as Gate;
       g.acc += b.dmg / this.level.gatePoint;
@@ -587,8 +648,18 @@ export class Sim {
       c.flash = 1;
       if (c.hp <= 0) {
         c.alive = false;
-        this.weapon = Math.min(WEAPONS.length - 1, this.weapon + 1);
-        this.events.push({ t: 'crateOpen', x: LANES[c.lane], z: c.z, label: WEAPONS[this.weapon].name.toUpperCase() + '!' });
+        if (this.weapon < WEAPONS.length - 1) {
+          this.weapon++;
+          const w = WEAPONS[this.weapon];
+          this.events.push({ t: 'crateOpen', x: LANES[c.lane], z: c.z, label: `${w.icon} ${w.name.toUpperCase()}!`, trait: w.trait });
+        } else {
+          // Top weapon already: the crate is a supply drop — a free level-up.
+          this.events.push({ t: 'crateOpen', x: LANES[c.lane], z: c.z, label: '🎁 SUPPLY DROP!', trait: 'Free upgrade' });
+          if (!this.choices) {
+            this.ups++;
+            this.offerChoices();
+          } else this.xp += xpNeed(this.ups);
+        }
       } else this.events.push({ t: 'crateHit', x: LANES[c.lane], z: c.z });
     } else {
       this.boss.hp -= b.dmg;

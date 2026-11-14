@@ -1,5 +1,13 @@
 # Status
 
+## v3.3 (2026-11-14) — weapon ladder with mechanics
+Feedback: nothing after the Laser, crates became useless.
+- [x] 3 new tiers: Rocket launcher (splash), Tesla coil (chain lightning across lanes), Artillery (shells all lanes)
+- [x] Mechanics for existing tiers: Shotgun spill into neighbours, Rifle pierce, Laser beam pierces the lane
+- [x] Crates show the next weapon; with the top weapon a crate is a supply drop (free level-up)
+- [x] Weapon pickup shows the weapon's trait; "New weapon" perk shows what you'll get
+- [x] Explosion rings and lightning bolt effects; `?weapon=N` demo param
+
 ## v3.2 (2026-11-14) — no unavoidable leaks
 Feedback: gate rows across all lanes absorbed bullets, shielding zombies behind them until it was too late.
 - [x] Bullets pass through 🎯 gates (and still pump them); crates pass on leftover damage

@@ -59,7 +59,9 @@ export class Renderer {
 
     // Draw back-to-front (far objects first).
     this.drawBoss(sim, sy0(sim.boss.z));
-    for (const cr of sim.crates) if (cr.alive) this.drawCrate(cr, sy0(cr.z));
+    // The crate shows what's inside: the next weapon, or a gift once you have the best one.
+    const nextW = WEAPONS[sim.weapon + 1];
+    for (const cr of sim.crates) if (cr.alive) this.drawCrate(cr, sy0(cr.z), nextW ? nextW.icon : '🎁');
     this.drawGates(sim, sy0, extraTop);
     this.drawEnemies(sim, sy0, extraTop);
     this.drawBullets(sim, sy0);
@@ -174,7 +176,7 @@ export class Renderer {
     }
   }
 
-  private drawCrate(cr: { lane: number; hp: number; maxHp: number; flash: number }, y: number) {
+  private drawCrate(cr: { lane: number; hp: number; maxHp: number; flash: number }, y: number, icon: string) {
     if (y < -120 || y > H + 60) return;
     const c = this.ctx;
     const x = LANES[cr.lane] + (cr.flash > 0 ? (Math.random() - 0.5) * 4 : 0);
@@ -194,7 +196,7 @@ export class Renderer {
     c.moveTo(x + w / 2 - 4, y - h + 4);
     c.lineTo(x - w / 2 + 4, y - 4);
     c.stroke();
-    this.label('🔫', x, y - h / 2 - 6, 22);
+    this.label(icon, x, y - h / 2 - 6, 22);
     this.label(`${Math.ceil(cr.hp)}`, x, y - 12, 15);
   }
 
@@ -342,14 +344,15 @@ export class Renderer {
     const c = this.ctx;
     const w = WEAPONS[sim.weapon];
     c.strokeStyle = w.color;
-    c.lineWidth = sim.weapon === 5 ? 4 : 3;
+    c.lineWidth = w.bulletW ?? 3;
     c.lineCap = 'round';
+    const len = w.bulletL ?? 16;
     c.beginPath();
     for (const b of sim.bullets) {
       if (!b.alive) continue;
       const y = sy(b.z);
       c.moveTo(b.x, y);
-      c.lineTo(b.x, y + (sim.weapon === 5 ? 34 : 16));
+      c.lineTo(b.x, y + len);
     }
     c.stroke();
   }
@@ -458,6 +461,38 @@ export class Renderer {
 
   private drawFx(fx: Fx, sim: Sim) {
     const c = this.ctx;
+    // explosion rings
+    for (const r of fx.rings) {
+      const a = r.life / 0.3;
+      c.globalAlpha = a;
+      c.strokeStyle = '#ffb347';
+      c.lineWidth = 4 * a + 1;
+      c.beginPath();
+      c.arc(r.x, r.y, r.r * (1.1 - a * 0.5), 0, Math.PI * 2);
+      c.stroke();
+      c.fillStyle = 'rgba(255,170,60,0.25)';
+      c.fill();
+    }
+    // lightning
+    for (const b of fx.bolts) {
+      c.globalAlpha = Math.min(1, b.life / 0.12);
+      c.strokeStyle = '#d8ccff';
+      c.lineWidth = 3;
+      c.lineJoin = 'round';
+      c.beginPath();
+      b.pts.forEach(([x, y], i) => {
+        if (i === 0) c.moveTo(x, y);
+        else {
+          const [px, py] = b.pts[i - 1];
+          const mx = (px + x) / 2 + (Math.random() - 0.5) * 18;
+          const my = (py + y) / 2 + (Math.random() - 0.5) * 18;
+          c.lineTo(mx, my);
+          c.lineTo(x, y);
+        }
+      });
+      c.stroke();
+    }
+    c.globalAlpha = 1;
     void sim;
     for (const p of fx.particles) {
       const a = p.life / p.max;
