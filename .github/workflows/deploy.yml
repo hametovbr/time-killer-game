@@ -24,7 +24,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Balance smoke test (bot plays levels 1-20)
-        run: npm run sim -- 1 20 0.9 | tail -1
+        run: npm run sim -- 1 20 0.9 | tail -1 && STATIC=1 npm run sim -- 1 20 0.9 | tail -1
       - name: Publish dist/ to gh-pages branch
         run: |
           cd dist

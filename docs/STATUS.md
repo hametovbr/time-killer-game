@@ -1,5 +1,16 @@
 # Status
 
+## v3.0 (2026-11-14) — gameplay rework
+Feedback on v2: dodging zombies was a dominant strategy, killing was pointless, no constant stream of zombies or bonuses.
+- [x] Research: dominant strategies, tower-defense lives, Vampire Survivors loop, death-spiral mitigation (`docs/research.md` part 2)
+- [x] Barricade with HP — any zombie that gets past damages it; 0 HP = defeat
+- [x] Continuous zombie stream in all lanes + hordes every ~12 s
+- [x] XP from kills → level-up → pick 1 of 3 perks (8 perks)
+- [x] Overkill carries over, fractional soldier "bite", gates can't wipe the squad
+- [x] Quiet rubber-banding for players behind the power curve
+- [x] Barricade permanent upgrade; stars = barricade HP left
+- [x] Static-player check in the simulator (`STATIC=1`)
+
 ## v2.0 "Lane Squad" (2026-11-14)
 Gameplay reworked based on feedback: three lanes, enemies, multipliers, weapon/rank upgrades, squad size changes.
 - [x] Core: 3 lanes, +/−/×/÷ gates, auto-fire, zombies, end-of-level boss

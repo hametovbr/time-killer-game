@@ -1,4 +1,4 @@
-import { W, H, COLORS, LANES, LANE_W, ROAD_L, ROAD_R, SQUAD_Y } from './constants';
+import { W, H, COLORS, LANES, LANE_W, ROAD_L, ROAD_R, SQUAD_Y, BARRICADE_Y } from './constants';
 import { WEAPONS } from './balance';
 import { gateLabel, type Sim } from './sim';
 import type { Fx } from './fx';
@@ -64,6 +64,7 @@ export class Renderer {
     this.drawEnemies(sim, sy0, extraTop);
     this.drawBullets(sim, sy0);
     this.drawSquad(sim, time);
+    this.drawBarricade(sim);
     this.drawFx(fx, sim);
     void time;
 
@@ -172,7 +173,7 @@ export class Renderer {
     }
   }
 
-  private drawCrate(cr: { lane: number; kind: string; hp: number; maxHp: number; flash: number }, y: number) {
+  private drawCrate(cr: { lane: number; hp: number; maxHp: number; flash: number }, y: number) {
     if (y < -120 || y > H + 60) return;
     const c = this.ctx;
     const x = LANES[cr.lane] + (cr.flash > 0 ? (Math.random() - 0.5) * 4 : 0);
@@ -181,7 +182,7 @@ export class Renderer {
     c.fillStyle = 'rgba(0,0,0,0.3)';
     this.rr(x - w / 2 + 3, y - h + 6, w, h, 6);
     c.fill();
-    c.fillStyle = cr.flash > 0.5 ? '#f0c890' : cr.kind === 'weapon' ? '#b9783a' : '#7a5bd6';
+    c.fillStyle = cr.flash > 0.5 ? '#f0c890' : '#b9783a';
     this.rr(x - w / 2, y - h, w, h, 6);
     c.fill();
     c.strokeStyle = 'rgba(0,0,0,0.35)';
@@ -192,7 +193,7 @@ export class Renderer {
     c.moveTo(x + w / 2 - 4, y - h + 4);
     c.lineTo(x - w / 2 + 4, y - 4);
     c.stroke();
-    this.label(cr.kind === 'weapon' ? '🔫' : '⭐', x, y - h / 2 - 6, 22);
+    this.label('🔫', x, y - h / 2 - 6, 22);
     this.label(`${Math.ceil(cr.hp)}`, x, y - 12, 15);
   }
 
@@ -239,7 +240,7 @@ export class Renderer {
         c.fillRect(x - bw / 2, y - r - 9, bw * Math.max(0, e.hp / e.maxHp), 4);
       }
       // How many soldiers this zombie takes if it reaches you.
-      if (e.power > 1) this.label(`-${e.power}`, x, y - (e.big ? 2 : 1), e.big ? 13 : 9, '#fff');
+      if (e.big) this.label(`-${e.power}`, x, y - 2, 13, "#fff");
     }
   }
 
@@ -321,7 +322,7 @@ export class Renderer {
 
   private drawSquad(sim: Sim, time: number) {
     const c = this.ctx;
-    const n = Math.min(sim.count, 48);
+    const n = Math.min(sim.count, 36);
     if (sim.count <= 0) return;
     // Hex-ish formation growing backwards from the front.
     const cols = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(n * 1.3))));
@@ -386,6 +387,39 @@ export class Renderer {
     this.rr(bx - 26, by - 13, 52, 26, 13);
     c.fill();
     this.label(`${sim.count}`, bx, by + 1, 17, '#fff', 'rgba(0,0,0,0)');
+  }
+
+  private drawBarricade(sim: Sim) {
+    const c = this.ctx;
+    const y = BARRICADE_Y;
+    const shake = sim.wallFlash > 0 ? (Math.random() - 0.5) * 4 * sim.wallFlash : 0;
+    const ratio = Math.max(0, sim.wall / sim.wallMax);
+    // Sandbag wall across the road.
+    c.fillStyle = 'rgba(0,0,0,0.3)';
+    c.fillRect(ROAD_L, y + 6, ROAD_R - ROAD_L, 30);
+    for (let row = 0; row < 2; row++) {
+      for (let i = 0; i < 10; i++) {
+        const bx = ROAD_L + 4 + i * 36 + (row ? 18 : 0) + shake;
+        if (bx > ROAD_R - 20) continue;
+        c.fillStyle = sim.wallFlash > 0.5 ? '#ffb0a0' : row ? '#b89a62' : '#c9ab70';
+        this.rr(bx, y + row * 13, 34, 14, 6);
+        c.fill();
+        c.strokeStyle = 'rgba(60,40,10,0.45)';
+        c.lineWidth = 1.5;
+        c.stroke();
+      }
+    }
+    // HP bar + number.
+    const bw = 200;
+    const bx = W / 2 - bw / 2;
+    const by = y + 34;
+    c.fillStyle = 'rgba(10,12,30,0.75)';
+    this.rr(bx - 4, by - 3, bw + 8, 18, 9);
+    c.fill();
+    c.fillStyle = ratio > 0.5 ? '#5cdb7a' : ratio > 0.25 ? '#ffc83d' : '#ff5a5a';
+    this.rr(bx, by, Math.max(8, bw * ratio), 12, 6);
+    c.fill();
+    this.label(`🧱 ${Math.max(0, Math.ceil(sim.wall))}`, W / 2, by + 6, 12);
   }
 
   private drawFx(fx: Fx, sim: Sim) {

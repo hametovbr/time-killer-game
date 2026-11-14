@@ -64,3 +64,37 @@ The ad that started this project was for **Mob Control** (Voodoo), a "**gate run
 - [StudioKrew — Hybrid casual vs traditional](https://studiokrew.com/blog/hybrid-casual-games-vs-traditional-mobile-games/)
 - [Game feel skill (juice checklist)](https://claudeskills.info/ko/skills/gamedev-skills/awesome-gamedev-agent-skills/game-feel/)
 - [Webiano — Difficulty curve](https://webiano.digital/knowledge-base/gaming/game-design/difficulty-curve/)
+
+## Part 2 — design principles behind the v3 rework
+
+Playtest feedback on v2: *"Why kill zombies at all? You can just dodge them. There's no constant stream of zombies or bonuses, and no reason to enter a lane with zombies. In the ad, you had health and lost if too many zombies got past."*
+
+That is a textbook design failure, and the literature names it precisely:
+
+**1. Dominant strategy kills choice.** A choice that is always better than the alternatives is not a choice (Jesse Schell, *The Art of Game Design*, "Game mechanics must be in balance"). Alexander Brazie (ex-Riot/Blizzard) lists the four ways meaningful decisions get lost: a dominant strategy appears, decisions get too hard, decisions become meaningless, or they disappear. In v2, "dodge every zombie lane" was dominant and killing was meaningless. Ernest Adams: every option should have an upside *and* a downside, otherwise it isn't a decision.
+→ **Fix:** dodging must cost something. Every option now has a price: shoot this lane = the others leak; stand in a zombie lane = lose soldiers but protect the barricade; shoot a gate = fewer bullets on zombies.
+
+**2. Lives / leak limit (tower defense).** In Bloons TD, lives are explicitly the number of enemies you are allowed to let through. This is exactly what the ad shows: a health bar that drops when zombies get past. It turns *every* zombie into a problem, not only the ones in your lane.
+→ **Fix:** a barricade with HP behind the squad. Any zombie in any lane that gets past it deals damage. Barricade at 0 = defeat. It is the single, readable fail state.
+
+**3. Killing must pay (Vampire Survivors loop).** The core loop of the most successful "simple but addictive" game of recent years is: kill → collect XP → level up → pick 1 of 3 upgrades → kill faster. Rewards land every few seconds, and the upgrade choice gives agency without slowing the pace. Enemy swarms are an *opportunity* (XP), not only an obstacle.
+→ **Fix:** every kill gives XP; a level-up pauses the game and offers 3 perks (flank fire, piercing, rapid fire, damage, reinforcements, repair, promotion, new weapon). That is the "constant stream of bonuses".
+
+**4. Constant pressure, sawtooth inside a level.** Last War's ad mode is described as "dodge and combat waves of zombies" where "each lane presents unique obstacles and zombies" — waves from several lanes at once, and you must prioritise threats. Pressure should be continuous, with peaks.
+→ **Fix:** a continuous zombie stream in all three lanes that ramps up, plus hordes roughly every 12 s. Total zombie HP per second is tuned to exceed what one lane of fire can handle, so you must keep switching (pressure ≈ 0.7–1.5× expected firepower).
+
+**5. Avoid the death spiral.** In tower defense, "kill → gold" is a positive feedback loop that also works against the player: one mistake leads to inevitable failure. Common mitigations: partial rewards on failure, recovery options, and quiet rubber-banding.
+→ **Fix:** gates can never wipe the squad (minimum 1 soldier); zombies arriving while you are behind the expected power curve spawn softer (never harder); repair is a perk; overkill damage carries into the next zombie so a big squad mows hordes instead of wasting bullets; defeats still pay coins and ease the level.
+
+**6. Verify with a "static player".** A simple test for a dominant strategy: a bot that never changes lane should lose. Our simulator has `STATIC=1` mode for exactly that.
+
+### Sources (part 2)
+- [Daniel Doan — The power of meaningful choices](https://medium.com/@doandaniel/gamedev-thoughts-the-power-of-meaningful-choices-in-game-design-50dbdeb0348a)
+- [Notes on Schell — Meaningful choices](https://notesbylex.com/meaningful-choices-in-games)
+- [Alexander Brazie — Video game balance guide](https://gamedesignskills.com/game-design/game-balance/)
+- [Ernest Adams — Achieving and enhancing gameplay](https://www.peachpit.com/articles/article.aspx?p=102309)
+- [Bloons Wiki — Lives](https://www.bloonswiki.com/Life)
+- [Whitevale Defender — Feedback loops & the death spiral](https://www.moddb.com/games/whitevale-defender/features/the-one-problem-with-all-tower-defense-games)
+- [Why Vampire Survivors feels so addictive](https://geekchamp.com/?p=789863)
+- [Last War: Survival — App Store description](https://apps.apple.com/th/app/id6448786147)
+- [Bugnet — Difficulty curves (sawtooth, adaptive easing)](https://bugnet.io/blog/difficulty-curves-how-to-get-them-right)

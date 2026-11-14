@@ -1,67 +1,84 @@
-# LANE SQUAD — Game Design Document (v2)
+# LANE SQUAD — Game Design Document (v3)
 
-> v1 ("Mob Cannon", a Mob Control-style cannon game) was replaced based on feedback: the goal is simpler **three-lane** gameplay with enemies, multipliers, unit/weapon upgrades and a changing squad size. This is the "squad runner" genre from Last War / Count Masters / "zombie gate shooter" ads.
+> History: v1 "Mob Cannon" (cannon, Mob Control-style) → v2 "Lane Squad" (3-lane runner) → **v3**: the v2 playtest showed that dodging zombies was a dominant strategy and killing had no purpose. v3 rebuilds the core around a **barricade (lives)**, a **continuous zombie stream** and an **XP → level-up → pick 1 of 3** loop. Reasoning and sources: `docs/research.md`, part 2.
 
 Platform: browser, mobile portrait first. No ads, no in-app purchases, no timers.
 
 ## 1. Core loop in one sentence
-> Steer your squad across three lanes, run through gates that change your soldier count, shoot zombies and upgrade crates, and reach the boss with the biggest squad you can.
+> Hold the line: switch between three lanes to shoot the zombie stream before it reaches your barricade, grab gates to grow your squad, level up from kills, and finish the boss.
 
 ## 2. Controls
-- Hold your finger (mouse) over a lane: the squad runs to it. Tapping a lane also works.
-- Shooting is automatic, always straight ahead in the current lane.
-- PC: ←/→ or A/D (one lane), 1/2/3 (jump to lane), Esc to pause.
+- Hold your finger (mouse) over a lane: the squad runs to it. Shooting is automatic.
+- Level-up: tap one of three cards (the game pauses while you choose).
+- PC: ←/→ or A/D, 1/2/3, Esc to pause.
 
 ## 3. Field
 ```
- ┌─────┬─────┬─────┐   ← BOSS (full width) after the finish line
- │ 🧟  │     │ 🧟  │   ← zombies walk towards you along the lanes
- │[+12]│[×2] │[−8] │   ← a gate row: each lane has its own gate
- │     │ 📦  │     │   ← 🔫/⭐ crate (shoot it before you run past)
- │     │ 👥  │     │   ← your squad (count above it)
- └─────┴─────┴─────┘
+ ┌─────┬─────┬─────┐  ← BOSS after the finish line
+ │ 🧟🧟 │ 🧟  │🧟🧟🧟│  ← continuous stream in ALL lanes, hordes every ~12 s
+ │[+12]│[×2] │[−8] │  ← gate row every ~6 s
+ │     │ 👥  │     │  ← your squad (auto-fire in its lane)
+ │ 🧟→ │     │  🧟→│  ← zombies that got past walk to the barricade
+ ├═════╧═════╧═════┤  ← 🧱 BARRICADE (HP) — 0 HP = defeat
 ```
 
-## 4. Mechanics (one new element every 1–3 levels)
-| # | Element | Rule | From level |
-|---|---|---|---|
-| 1 | **+N / ×N** gates (blue) | change the soldier count when passed | 1 |
-| 2 | Zombies | walk towards you along a lane; killed by bullets. A zombie that reaches the squad **in your lane** takes `bite` soldiers (~3% of the squad size expected at that point, min 1; shown as `-N` on the zombie). Zombies in other lanes pass by harmlessly — dodging is a valid choice | 1 |
-| 3 | **−N** gates (red) | remove soldiers; 0 soldiers = defeat | 2 |
-| 4 | 🔫 crate | shoot it open → weapon +1 tier (for this run) | 3 |
-| 5 | Shootable gates 🎯 | bullets raise the number on +/− gates (a "−10" can be shot up into a plus) | 4 |
-| 6 | ⭐ crate | soldier rank +1 → damage multiplier | 6 |
-| 7 | **÷2** gates | split the squad | 7 |
-| + | Chasers | switch to your lane | 8 |
-| + | Brutes | lots of HP, take 4× bite | 10 |
-| + | ×3 gates | | 12 |
-| ★ | Boss | at the end of every level; eats soldiers on contact; kill it to win | 1 |
+## 4. Rules — every option has a price
+| Situation | Cost / reward |
+|---|---|
+| Zombie gets past in **any** lane | barricade −1 (brute −6) |
+| Zombie runs into your squad | it dies (barricade safe), you lose soldiers (fractional "bite", accumulated) |
+| Kill a zombie | +1 XP (brute +6) → level-up |
+| Gate +N / ×N | more soldiers = more firepower (soldiers^0.8) |
+| Gate −N / ÷N | fewer soldiers, but never below 1 |
+| Shoot a 🎯 gate | its number goes up — but those bullets aren't hitting zombies |
+| Shoot a 🔫 crate | weapon +1 tier |
+| Boss reaches you | eats soldiers; when only 1 is left it smashes the barricade |
 
-**Weapons (🔫 crates):** Pistol → SMG → Shotgun → Rifle → Minigun → Laser.
-**Ranks (⭐ crates):** Private ×1 → Corporal ×1.3 → Sergeant ×1.7 → Lieutenant ×2.2 → Captain ×2.9 → Major ×3.8.
-**Firepower** = `soldiers^0.8 × fire rate × weapon damage × rank × damage upgrade`. The 0.8 exponent keeps ×-gates exciting without trivialising difficulty.
+**Win:** kill the boss. **Lose:** barricade reaches 0. One clear fail state, exactly like the ads' health bar.
 
-The key decision at every moment: **the lane with the best gate vs the lane without zombies vs the lane with a crate**. One decision at a time, readable in a second.
+The key decision every second: **which lane to defend right now** — the one with the most dangerous zombies, the one with the best gate, or the one with a crate. Standing still is a losing strategy (verified by the static-player bot).
 
-## 5. Levels — sawtooth
-- A level is 9–20 "beats" (gate row / zombie group / guarded crate), then the finish line and the boss. 30–60 seconds each.
-- Every **5th** level is a **BOSS level**: longer, with a boss ~1.7× tougher. The level after it is a breather.
-- The generator is deterministic (seed = level number) and endless.
-- Gate values follow a **target squad-size curve** (from the starting squad up to `25 + 7n`); zombie and boss HP follow the expected firepower given expected upgrades. The first gate row never has negative gates; negative gates never wipe out a squad that is on the target curve.
+## 5. Level-up perks (pick 1 of 3)
+| Perk | Effect | Max |
+|---|---|---|
+| ↔️ Flank fire | also shoot neighbouring lanes at 20/33/45% damage | 3 |
+| 🗡️ Piercing rounds | bullets pass through +1 zombie at full damage | 3 |
+| ⏩ Rapid fire | +20% fire rate | 6 |
+| 💥 Hollow points | +25% damage | 6 |
+| 👥 Reinforcements | +30% soldiers (min +4) | — |
+| 🧱 Repair barricade | +30% HP (offered only when damaged) | 3 |
+| ⭐ Promotion | rank +1 (×1.3 … ×3.8 damage) | 5 |
+| 🔫 New weapon | next weapon tier | 5 |
 
-## 6. Meta progression
-- **Coins** per win: `(30 + 8n + 0.3·squad_at_end) × stars × income`.
-- **Stars:** share of the peak squad that survived to the end (≥60% — 3★, ≥30% — 2★).
-- **Permanent upgrades:** Starting squad (+1), Starting weapon, Damage (+10%), Income (+15%).
-- **A defeat** still pays coins proportional to the track covered and **adaptively eases** the level: −10% enemy HP per consecutive loss (up to −40%).
+XP needed: `18 + 14k` for the k-th level-up → ~4–9 level-ups per level, front-loaded.
+Overkill damage carries into the next zombie, so a big squad mows through hordes.
 
-## 7. Game feel
-Pop-up "+12/−8" numbers and a screen flash on gates, particles on hits and kills, hit-stop and screen shake on crates/brutes/victory, a "pop" of the weapon panel on upgrades, a bobbing running squad, a distinct sound per weapon, vibration on Android, and a "reduce screen shake" option.
+Weapons: Pistol → SMG → Shotgun → Rifle → Minigun → Laser.
+
+## 6. Levels
+- Duration 38–65 s of running, then the boss. Every 5th level is a boss level (longer, tougher boss); the next one is a breather.
+- **Stream:** per-lane arrival rate `λ = pressure / (3 · 0.15 s)`, ramping from 55% to 115% over the level. `pressure = 0.7 + 0.042·d` (0.45 on levels 1–3), capped at 1.5 — i.e. the stream demands 70–150% of your expected firepower, so you can't hold all three lanes from one spot.
+- **Hordes** every 10–14 s: 1–2 lanes, 6–22 zombies in a tight column.
+- Brutes from level 10, lane-switching chasers from level 8.
+- Gates every ~6 s follow a target squad-size curve; the first row is always positive; first zombies arrive after the first gate.
+- Zombie HP = 0.15 s of expected firepower at arrival time (expected = ~half the target squad, expected upgrades, +1.2%/s for level-ups).
+- **Quiet rubber-banding:** when a zombie comes into view and you're below the expected firepower, its HP is scaled down (to 50% at most). Never scaled up.
+
+## 7. Meta progression
+- Coins: `(30 + 8n + 0.15·kills) × stars × income`. Stars = barricade HP left (≥70% 3★, ≥35% 2★).
+- Permanent upgrades: Starting squad, Starting weapon, Damage, **Barricade** (40 + 8/level HP), Income.
+- A defeat pays coins for the track covered and eases the level (−10% enemy HP per consecutive loss, up to −50%).
 
 ## 8. Balance (bot, `npm run sim`)
-- Bot with 0.8 accuracy and expected upgrades: 31/40 levels on the first try (adaptive easing covers retries).
-- Bot with 0.95 accuracy: 40/40. Bot with 0.6 accuracy, levels 1–20: 16/20.
-- Without upgrades, levels 10–30: ~3/21 — the meta layer genuinely matters.
+| Player | Levels | Wins on 1st try |
+|---|---|---|
+| Bot 0.8 accuracy, expected upgrades | 1–40 | ~31–35 / 40 |
+| Bot 0.95 | 1–40 | ~37 / 40 |
+| Sloppy bot 0.6 | 1–20 | ~14–18 / 20 |
+| **Static player (never changes lane)** | 1–40 | **~8–12 / 40** — dodging/standing still is no longer viable |
+| Bot 0.8, no upgrades | 10–30 | ~3 / 21 — the meta layer matters |
+
+`STATIC=1 npm run sim -- 1 40` runs the static-player check.
 
 ## 9. Save and tech
-`localStorage` (`lanesquad.save.v1`), PWA (offline, installable). Vite + TypeScript + Canvas 2D; logic in `src/game/sim.ts` is separate from rendering; `?autoplay` in the URL makes the game play itself (demo).
+`localStorage` (`lanesquad.save.v1`, old saves migrate), PWA. Vite + TypeScript + Canvas 2D; logic in `src/game/sim.ts`; `?autoplay` makes the game play itself.

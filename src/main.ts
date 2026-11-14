@@ -7,7 +7,8 @@ import { Fx } from './game/fx';
 import { Sfx } from './game/audio';
 import { Bot } from './game/bot';
 import { loadSave, writeSave, resetSave, type SaveData } from './game/save';
-import { UPGRADES, WEAPONS, RANK_NAMES, startSquad, damageMul, upgradeCost, starsFor, levelReward } from './game/balance';
+import { UPGRADES, WEAPONS, RANK_NAMES, PERKS, startSquad, damageMul, barricadeHp, upgradeCost, starsFor, levelReward } from './game/balance';
+import { BARRICADE_Y } from './game/constants';
 
 type Mode = 'menu' | 'playing' | 'paused' | 'result';
 
@@ -19,6 +20,10 @@ const hudCoins = $('hud-coins');
 const hudProgress = $('hud-progress');
 const hudProgressBar = hudProgress.firstElementChild as HTMLElement;
 const hudGear = $('hud-gear');
+const hudXp = $('hud-xp');
+const hudXpBar = hudXp.firstElementChild as HTMLElement;
+const hudXpLabel = hudXp.lastElementChild as HTMLElement;
+const levelupEl = $('levelup');
 const btnPause = $<HTMLButtonElement>('btn-pause');
 const intro = $('intro');
 const screen = $('screen');
@@ -96,7 +101,8 @@ function simConfig(n: number) {
     startCount: startSquad(save.upgrades.squad),
     startWeapon: save.upgrades.weapon,
     dmgMul: damageMul(save.upgrades.damage),
-    ease: Math.max(0.6, 1 - fails * 0.1),
+    wallHp: barricadeHp(save.upgrades.wall),
+    ease: Math.max(0.5, 1 - fails * 0.1),
   };
 }
 
@@ -116,7 +122,8 @@ function startLevel(n: number) {
   pointerDown = false;
   gearKey = '';
   screen.classList.add('hidden');
-  for (const el of [hud, hudProgress, hudGear]) el.classList.remove('hidden');
+  for (const el of [hud, hudProgress, hudGear, hudXp]) el.classList.remove('hidden');
+  levelupEl.classList.add('hidden');
   hudLevel.textContent = levelLabel(n, level);
   if (level.intro) {
     intro.textContent = level.intro;
@@ -137,7 +144,7 @@ function hideIntro() {
 }
 
 function hideHud() {
-  for (const el of [hud, hudProgress, hudGear, intro]) el.classList.add('hidden');
+  for (const el of [hud, hudProgress, hudGear, hudXp, intro, levelupEl]) el.classList.add('hidden');
 }
 
 function pause() {
@@ -195,7 +202,7 @@ function handleEvents(events: GameEvent[], audible: boolean) {
         break;
       case 'squadHit':
         fx.burst(e.x, SQUAD_Y, '#ff6b6b', 6 + e.lost, 130, 2.6);
-        fx.text(e.x + (Math.random() - 0.5) * 30, SQUAD_Y - 30, `-${e.lost}`, '#ff8080', 20 + Math.min(14, e.lost * 2));
+        if (e.lost > 0) fx.text(e.x + (Math.random() - 0.5) * 30, SQUAD_Y - 30, `-${e.lost}`, '#ff8080', 20 + Math.min(14, e.lost * 2));
         fx.flash = Math.max(fx.flash, 0.2);
         fx.flashColor = '#ff2a2a';
         fx.addShake(2 + Math.min(6, e.lost));
@@ -209,7 +216,7 @@ function handleEvents(events: GameEvent[], audible: boolean) {
         if (audible) sfx.tick();
         break;
       case 'crateOpen':
-        fx.burst(e.x, screenY(e.z) - 26, e.kind === 'weapon' ? '#ffd54a' : '#c0a0ff', 40, 220, 3.5);
+        fx.burst(e.x, screenY(e.z) - 26, '#ffd54a', 40, 220, 3.5);
         fx.text(W / 2, SQUAD_Y - 110, e.label, '#ffd54a', 30);
         fx.addShake(6);
         fx.addHitStop(70);
@@ -217,6 +224,22 @@ function handleEvents(events: GameEvent[], audible: boolean) {
           sfx.powerup();
           vibrate([20, 40, 20]);
         }
+        break;
+      case 'leak':
+        fx.burst(e.x, BARRICADE_Y + 6, '#d9b77a', 10 + e.dmg * 4, 150, 3);
+        fx.text(e.x, BARRICADE_Y - 12, `-${e.dmg} 🧱`, '#ffb070', 18 + e.dmg * 2);
+        fx.addShake(2 + e.dmg);
+        if (audible) {
+          sfx.thud();
+          vibrate(e.dmg > 1 ? 60 : 15);
+        }
+        break;
+      case 'levelUp':
+        if (audible) sfx.powerup();
+        break;
+      case 'perk':
+        fx.text(W / 2, SQUAD_Y - 110, e.label, '#e4c8ff', 24);
+        fx.burst(sim.squadX, SQUAD_Y, '#c86bff', 30, 200, 3);
         break;
       case 'bossArrive':
         if (audible) sfx.roar();
@@ -249,10 +272,16 @@ function handleEvents(events: GameEvent[], audible: boolean) {
 function updateHud() {
   hudCoins.textContent = String(save.coins);
   hudProgressBar.style.width = `${sim.progress * 100}%`;
-  const key = `${sim.weapon}-${sim.rank}`;
+  hudXpBar.style.width = `${sim.xpProgress * 100}%`;
+  hudXpLabel.textContent = `LV ${sim.ups + 1}`;
+  if (sim.choices && levelupEl.classList.contains('hidden') && !autoplay) showLevelUp();
+  const perkIcons = PERKS.filter((p) => p.id !== 'recruits' && p.id !== 'repair' && p.id !== 'rank' && p.id !== 'weapon' && sim.perks[p.id] > 0)
+    .map((p) => `${p.icon}${sim.perks[p.id]}`)
+    .join(' ');
+  const key = `${sim.weapon}-${sim.rank}-${perkIcons}`;
   if (key !== gearKey) {
     const w = WEAPONS[sim.weapon];
-    hudGear.textContent = `${w.icon} ${w.name} · ⭐ ${RANK_NAMES[sim.rank]}`;
+    hudGear.textContent = `${w.icon} ${w.name} · ⭐ ${RANK_NAMES[sim.rank]}${perkIcons ? ' · ' + perkIcons : ''}`;
     if (gearKey) {
       hudGear.classList.remove('pop');
       void hudGear.offsetWidth;
@@ -262,18 +291,44 @@ function updateHud() {
   }
 }
 
+function showLevelUp() {
+  const ch = sim.choices!;
+  levelupEl.innerHTML =
+    `<h2>LEVEL UP!</h2>` +
+    ch
+      .map(
+        (p, i) => `<button class="perk" data-i="${i}">
+          <div class="pi">${p.icon}</div>
+          <div><div class="pt">${p.title}</div><div class="pd">${p.describe(sim.perks[p.id])}</div>
+          ${p.max < 99 ? `<div class="pl">${sim.perks[p.id]}/${p.max}</div>` : ''}</div>
+        </button>`,
+      )
+      .join('');
+  levelupEl.classList.remove('hidden');
+  pointerDown = false;
+}
+
+levelupEl.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('.perk') as HTMLElement | null;
+  if (!btn || !sim.choices) return;
+  sfx.click();
+  sim.choose(Number(btn.dataset.i));
+  levelupEl.classList.add('hidden');
+});
+
 function finishLevel() {
   const n = level.n;
   const won = sim.state === 'won';
   save.stats.played++;
   save.stats.kills += sim.stats.kills;
   save.stats.bestPeak = Math.max(save.stats.bestPeak, sim.peak);
+  save.stats.leaks = (save.stats.leaks ?? 0) + sim.stats.leaks;
   let reward: number;
   let stars = 0;
   if (won) {
     save.stats.won++;
-    stars = starsFor(sim.count, sim.peak);
-    reward = levelReward(n, stars, sim.count, save.upgrades.income);
+    stars = starsFor(sim.wall, sim.wallMax);
+    reward = levelReward(n, stars, sim.stats.kills, save.upgrades.income);
     save.stars[n] = Math.max(save.stars[n] ?? 0, stars);
     delete save.fails[n];
     if (save.level === n) save.level = n + 1;
@@ -396,7 +451,8 @@ function showResult(won: boolean, stars: number, reward: number) {
       <h2>Victory!</h2>
       <div class="stars">${[1, 2, 3].map((i) => `<span data-s="${i}">⭐</span>`).join('')}</div>
       <div class="reward">+${reward} 🪙</div>
-      <div class="stat">Squad: ${sim.count} (peak ${sim.peak}) · Zombies: ${sim.stats.kills}</div>
+      <div class="stat">🧱 Barricade: ${Math.ceil(sim.wall)}/${sim.wallMax} · Zombies: ${sim.stats.kills} killed, ${sim.stats.leaks} got through</div>
+      <div class="stat">Squad: ${sim.count} (peak ${sim.peak}) · Level-ups: ${sim.ups}</div>
       <div class="stat">${WEAPONS[sim.weapon].icon} ${WEAPONS[sim.weapon].name} · ⭐ ${RANK_NAMES[sim.rank]}</div>
       <button class="btn big" data-act="next">Next ▶</button>
       <div class="row">
@@ -411,10 +467,11 @@ function showResult(won: boolean, stars: number, reward: number) {
   } else {
     const fails = save.fails[level.n] ?? 0;
     showPanel(`
-      <h2>Squad wiped out 💀</h2>
+      <h2>Barricade broken 🧱</h2>
+      <div class="stat">${sim.stats.leaks} zombies got past you — switch lanes to cover them</div>
       <div class="stat">Track covered: ${Math.round(sim.progress * 100)}% · Peak squad: ${sim.peak}</div>
       <div class="reward">+${reward} 🪙</div>
-      ${fails >= 1 ? `<div class="stat">Enemies weakened (−${Math.min(40, fails * 10)}% HP)</div>` : ''}
+      ${fails >= 1 ? `<div class="stat">Enemies weakened (−${Math.min(50, fails * 10)}% HP)</div>` : ''}
       ${can ? `<div class="stat">💡 Upgrades available: ${can}</div>` : ''}
       <button class="btn big" data-act="retry">Try again ↻</button>
       <div class="row">

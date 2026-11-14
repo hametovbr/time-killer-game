@@ -1,5 +1,5 @@
 import { Rng } from './rng';
-import { LANES } from './constants';
+import { RUN_SPEED } from './constants';
 import { dps, damageMul, startSquad, WEAPONS } from './balance';
 
 export type LevelType = 'normal' | 'boss';
@@ -16,15 +16,18 @@ export interface EnemyDef {
   z: number;
   lane: number;
   hp: number;
-  power: number; // soldiers it takes on contact
+  power: number; // soldiers it takes if it runs into the squad
+  leak: number; // barricade damage if it gets past
+  xp: number;
   big: boolean;
   chase: boolean;
   speed: number;
+  expDps: number; // firepower the player is expected to have when this zombie arrives
 }
 export interface CrateDef {
   z: number;
   lane: number;
-  kind: 'weapon' | 'rank';
+  kind: 'weapon';
   hp: number;
 }
 export interface BossDef {
@@ -37,6 +40,7 @@ export interface LevelDef {
   n: number;
   type: LevelType;
   d: number;
+  duration: number; // seconds of running before the finish line
   length: number;
   gatePoint: number; // damage needed to raise a shootable gate by 1
   gates: GateDef[];
@@ -51,7 +55,6 @@ export const UNLOCK = {
   minus: 2,
   weaponCrate: 3,
   shootable: 4,
-  rankCrate: 6,
   divide: 7,
   chasers: 8,
   big: 10,
@@ -59,15 +62,15 @@ export const UNLOCK = {
 };
 
 const INTROS: Record<number, string> = {
-  1: 'Hold your finger over a lane — the squad runs there. Go through blue gates!',
+  1: "Hold your finger over a lane. Zombies that slip past hit the barricade — don't let it fall!",
   2: 'Red gates take soldiers away — avoid them',
   3: 'Shoot the 🔫 crate to get a better weapon',
   4: 'Shoot +/− gates — their number goes up!',
   5: 'BOSS! Grow your squad before the finish line',
-  6: 'A ⭐ crate promotes your soldiers — more damage',
+  6: 'Tip: Flank fire and Piercing rounds help you cover all three lanes',
   7: '÷ gates split your squad. Careful!',
-  8: 'Some zombies switch to your lane',
-  10: 'Brutes: lots of HP, they take a big bite out of your squad',
+  8: 'Yellow zombies switch lanes towards you',
+  10: 'Brutes: tough, and they smash the barricade hard',
 };
 
 export const levelType = (n: number): LevelType => (n % 5 === 0 ? 'boss' : 'normal');
@@ -84,117 +87,113 @@ export function generateLevel(n: number): LevelDef {
   const rng = new Rng(n * 9973 + 7);
   const type = levelType(n);
   const d = difficulty(n);
+  const T = Math.min(65, 38 + n * 0.9) + (type === 'boss' ? 6 : 0);
 
   // Expected player state at this level (upgrades bought ~ every 3 levels) — used to scale HP.
   const expUp = Math.floor(n / 3);
-  let expWeapon = Math.min(WEAPONS.length - 1, Math.floor(n / 9));
-  let expRank = 0;
   const start = startSquad(Math.min(20, expUp));
-  // Designed squad-size curve over the level: gates are tuned to roughly follow it.
   const peakT = Math.min(450, 25 + 7 * n);
-  let expCount = start;
+  const target = (t: number) => start + (peakT - start) * Math.min(1, t / T);
+  let expWeapon = Math.min(WEAPONS.length - 1, Math.floor(n / 9));
   const expDmg = damageMul(Math.min(25, expUp));
-  const expDps = () => dps(Math.max(1, expCount), expWeapon, expRank, expDmg);
+  // In-run level-ups add roughly +1.2% firepower per second of play.
+  // HP assumes ~half the target squad: you're busy defending, not just collecting gates.
+  const HPC = 0.5;
+  const expDps = (t: number) => dps(Math.max(start, target(t) * HPC), expWeapon, 0, expDmg) * (1 + 0.012 * t);
 
-  const gates: GateDef[] = [];
+  // Pressure: share of the player's firepower the zombie stream demands. >1 means you cannot stop everything.
+  const pressure = Math.min(1.5, (n <= 3 ? 0.45 : 0.7) + d * 0.042);
+  const hpK = 0.15; // seconds of focused fire per regular zombie (many weak zombies = the ad's horde feel)
+  const zSpeed = Math.min(65, 30 + d * 1.5);
+  // Soldiers lost per zombie that reaches the squad (fractional — accumulated in the sim).
+  const bite = (t: number) => Math.max(0.4, target(t) * HPC * 0.04 * (hpK / 0.35));
+  const placeZ = (t: number, speed: number) => t * (RUN_SPEED + speed); // arrives at the squad line at time t
+
   const enemies: EnemyDef[] = [];
-  const crates: CrateDef[] = [];
-  const beats = Math.round(9 + Math.min(9, n * 0.45) + (type === 'boss' ? 2 : 0));
-  const enemyHp = () => Math.max(1, Math.round(expDps() * (0.07 + Math.min(0.06, d * 0.003)) * rng.range(0.8, 1.2)));
-  const enemySpeed = Math.min(70, 25 + d * 2);
-  // Soldiers a zombie takes on contact: ~5% of the squad you're expected to have here, so a leak is always visible.
-  const bite = (zz: number) => Math.max(1, Math.round(target(zz) * 0.03));
-  let z = 520;
-  const estLen = 520 + beats * 360;
-  const target = (zz: number) => start + (peakT - start) * Math.min(1, zz / estLen);
-  let weaponCrates = 0;
-  let rankCrates = 0;
+  const push = (t: number, lane: number, opts: Partial<EnemyDef> = {}) => {
+    const big = !!opts.big;
+    const speed = big ? zSpeed * 0.7 : zSpeed;
+    const hp = Math.max(1, Math.round(expDps(t) * hpK * (big ? 6 : 1) * rng.range(0.85, 1.15)));
+    enemies.push({
+      z: placeZ(t, speed),
+      lane,
+      hp,
+      power: big ? Math.max(2, Math.round(bite(t) * 10)) : bite(t),
+      leak: big ? 6 : 1, // barricade damage per zombie that gets through
+      xp: big ? 6 : 1,
+      big,
+      chase: !!opts.chase,
+      speed,
+      expDps: expDps(t),
+    });
+  };
 
-  for (let b = 0; b < beats; b++) {
-    const roll = rng.next();
-    const lastBeats = b >= beats - 2;
-    let kind: 'gates' | 'enemies' | 'crate';
-    if (b === 0 || b % 2 === 0) kind = 'gates';
-    else if (n >= UNLOCK.weaponCrate && weaponCrates < (n < 10 ? 1 : 2) && roll < 0.35 && !lastBeats) kind = 'crate';
-    else if (n >= UNLOCK.rankCrate && rankCrates < 1 && roll < 0.5 && !lastBeats) kind = 'crate';
-    else kind = n <= 2 && b < 3 ? 'gates' : 'enemies';
-
-    if (kind === 'gates') {
-      expCount = target(z);
-      const want = Math.max(2, target(z + 700) - expCount);
-      const lanes = rng.chance(n < 3 ? 0.3 : 0.6) ? [0, 1, 2] : rng.shuffle([0, 1, 2]).slice(0, 2).sort();
-      const row: GateDef[] = [];
-      for (const lane of lanes) {
-        const good = b === 0 || rng.chance(n < UNLOCK.minus ? 1 : 0.55);
-        let op: GateOp;
-        let v: number;
-        if (good) {
-          const useX = expCount >= 4 && expCount * 2 <= expCount + want * 2.2 && rng.chance(0.45);
-          op = useX ? 'x' : '+';
-          v = useX ? (n >= UNLOCK.x3 && expCount * 3 <= expCount + want * 3 && rng.chance(0.3) ? 3 : 2) : Math.max(2, Math.round(want * rng.range(0.6, 1.5)));
-        } else {
-          const useDiv = n >= UNLOCK.divide && expCount >= 6 && rng.chance(0.3);
-          op = useDiv ? '/' : '-';
-          v = useDiv ? 2 : Math.max(2, Math.round(Math.min(want, expCount * 0.6) * rng.range(0.6, 1.0)));
-        }
-        row.push({ z, lane, op, v, shootable: n >= UNLOCK.shootable && (op === '+' || op === '-') });
-      }
-      if (!row.some((g) => g.op === '+' || g.op === 'x')) {
-        row[0].op = '+';
-        row[0].v = Math.max(3, Math.round(want));
-      }
-      gates.push(...row);
-      z += rng.range(300, 380);
-    } else if (kind === 'crate') {
-      const isWeapon = n >= UNLOCK.weaponCrate && weaponCrates < (n < 10 ? 1 : 2) && (rankCrates >= 1 || n < UNLOCK.rankCrate || rng.chance(0.5));
-      const lane = rng.int(0, 2);
-      crates.push({ z: z + 40, lane, kind: isWeapon ? 'weapon' : 'rank', hp: Math.round(expDps() * rng.range(1.2, 1.8) + 4) });
-      if (isWeapon) {
-        weaponCrates++;
-        expWeapon = Math.min(WEAPONS.length - 1, expWeapon + 1);
-      } else {
-        rankCrates++;
-        expRank = Math.min(5, expRank + 1);
-      }
-      // Guards in other lanes.
-      for (const l of [0, 1, 2]) {
-        if (l === lane || rng.chance(0.5)) continue;
-        for (let i = 0; i < 2 + Math.floor(d / 6); i++)
-          enemies.push({ z: z + i * 26, lane: l, hp: enemyHp(), power: bite(z), big: false, chase: false, speed: enemySpeed });
-      }
-      z += rng.range(320, 400);
-    } else {
-      const groupLanes = rng.chance(0.3 + Math.min(0.3, d * 0.012)) ? rng.shuffle([0, 1, 2]).slice(0, 2) : [rng.int(0, 2)];
-      for (const lane of groupLanes) {
-        const k = Math.min(6, 2 + Math.round(d * 0.12) + rng.int(0, 2));
-        for (let i = 0; i < k; i++) {
-          enemies.push({
-            z: z + i * 24,
-            lane,
-            hp: enemyHp(),
-            power: bite(z),
-            big: false,
-            chase: n >= UNLOCK.chasers && rng.chance(Math.min(0.35, 0.1 + d * 0.01)),
-            speed: enemySpeed,
-          });
-        }
-      }
-      if (n >= UNLOCK.big && rng.chance(Math.min(0.6, 0.25 + d * 0.015))) {
-        enemies.push({ z: z + 60, lane: rng.int(0, 2), hp: enemyHp() * 7, power: bite(z) * 4, big: true, chase: false, speed: enemySpeed * 0.6 });
-      }
-      z += rng.range(330, 420);
+  // 1) Continuous stream in all three lanes, ramping up through the level.
+  const lambda0 = pressure / (3 * hpK); // zombies per second per lane at full ramp
+  for (let lane = 0; lane < 3; lane++) {
+    let t = (n <= 3 ? 6 : 4) + rng.range(0, 1.5); // first gate comes before the first zombies
+    while (t < T) {
+      push(t, lane, { chase: n >= UNLOCK.chasers && rng.chance(Math.min(0.25, 0.08 + d * 0.008)) });
+      const ramp = 0.55 + 0.6 * (t / T);
+      t += rng.range(0.6, 1.4) / (lambda0 * ramp);
     }
   }
+  // 2) Hordes every ~12 s — the sawtooth inside a level.
+  for (let t = 11; t < T - 3; t += rng.range(10, 14)) {
+    const lanes = rng.shuffle([0, 1, 2]).slice(0, n < 4 ? 1 : 2);
+    const size = Math.min(22, 6 + Math.round(d * 0.45));
+    for (const lane of lanes) for (let i = 0; i < size; i++) push(t + i * 0.07, lane);
+  }
+  // 3) Brutes.
+  if (n >= UNLOCK.big) for (let t = 14; t < T - 4; t += rng.range(13, 18)) push(t, rng.int(0, 2), { big: true });
 
-  const length = z + 100;
-  // Boss HP assumes the player got about half of the crate upgrades.
-  expCount = peakT * 0.85;
-  expWeapon = Math.max(0, expWeapon - Math.floor(weaponCrates / 2));
-  expRank = Math.max(0, expRank - 1);
-  const bossT = type === 'boss' ? 10 : 6;
+  // Gate rows every ~6 s, values follow a target squad-size curve.
+  const gates: GateDef[] = [];
+  for (let t = 4; t < T - 2; t += rng.range(5.5, 7)) {
+    const z = t * RUN_SPEED;
+    const cur = target(t);
+    const want = Math.max(2, target(t + 6) - cur);
+    const lanes = rng.chance(n < 3 ? 0.3 : 0.6) ? [0, 1, 2] : rng.shuffle([0, 1, 2]).slice(0, 2).sort();
+    const row: GateDef[] = [];
+    for (const lane of lanes) {
+      const good = t < 6 || rng.chance(n < UNLOCK.minus ? 1 : 0.55);
+      let op: GateOp;
+      let v: number;
+      if (good) {
+        const useX = cur >= 4 && cur <= want * 2.2 && rng.chance(0.4);
+        op = useX ? 'x' : '+';
+        v = useX ? (n >= UNLOCK.x3 && cur * 2 <= want * 3 && rng.chance(0.3) ? 3 : 2) : Math.max(2, Math.round(want * rng.range(0.6, 1.5)));
+      } else {
+        const useDiv = n >= UNLOCK.divide && cur >= 6 && rng.chance(0.3);
+        op = useDiv ? '/' : '-';
+        v = useDiv ? 2 : Math.max(2, Math.round(Math.min(want, cur * 0.6) * rng.range(0.6, 1.0)));
+      }
+      row.push({ z, lane, op, v, shootable: n >= UNLOCK.shootable && (op === '+' || op === '-') });
+    }
+    if (!row.some((g) => g.op === '+' || g.op === 'x')) {
+      row[0].op = '+';
+      row[0].v = Math.max(3, Math.round(want));
+    }
+    gates.push(...row);
+  }
+
+  // Weapon crates.
+  const crates: CrateDef[] = [];
+  if (n >= UNLOCK.weaponCrate) {
+    const times = n < 10 ? [T * 0.35] : [T * 0.3, T * 0.7];
+    for (const t of times) {
+      crates.push({ z: t * RUN_SPEED + 60, lane: rng.int(0, 2), kind: 'weapon', hp: Math.round(expDps(t) * rng.range(1.0, 1.5) + 4) });
+      expWeapon = Math.min(WEAPONS.length - 1, expWeapon + 1);
+    }
+    // Boss HP assumes the player got about half of them.
+    expWeapon = Math.max(0, expWeapon - Math.floor(times.length / 2));
+  }
+
+  const length = T * RUN_SPEED;
+  const bossT = type === 'boss' ? 9 : 5;
   const boss: BossDef = {
-    z: length + 520,
-    hp: Math.round(expDps() * bossT),
+    z: length + 560,
+    hp: Math.round(expDps(T) * 0.85 * bossT),
     speed: Math.min(60, 26 + d * 1.2),
     eat: 6 + d * 0.6,
   };
@@ -203,14 +202,13 @@ export function generateLevel(n: number): LevelDef {
     n,
     type,
     d,
+    duration: T,
     length,
-    gatePoint: Math.max(1, expDps() * 0.08),
+    gatePoint: Math.max(1, expDps(T * 0.5) * 0.08),
     gates,
-    enemies,
+    enemies: enemies.sort((a, b) => a.z - b.z),
     crates,
     boss,
     intro: INTROS[n] ?? null,
   };
 }
-
-export const laneX = (lane: number) => LANES[lane];

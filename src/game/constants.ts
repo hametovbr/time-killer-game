@@ -6,17 +6,19 @@ export const LANE_W = 116;
 export const ROAD_L = 20;
 export const ROAD_R = 380;
 
-export const SQUAD_Y = 590; // screen y of the squad front
+export const SQUAD_Y = 548; // screen y of the squad front
+export const BARRICADE_Y = 664; // screen y of the barricade top edge
+/** Track distance from the squad line back to the barricade. */
+export const BARRICADE_GAP = BARRICADE_Y - SQUAD_Y;
 export const RUN_SPEED = 150; // px per second of track
 export const BULLET_SPEED = 950;
 export const MAX_SQUAD = 999;
-export const FIRE_RANGE = SQUAD_Y - 40; // bullets travel this far ahead (track px)
+export const FIRE_RANGE = SQUAD_Y - 30; // bullets travel this far ahead (track px)
 
 export const COLORS = {
   grass: '#2f6b3e',
   grassDark: '#285d36',
   road: '#3b4160',
-  roadDark: '#333852',
   laneLine: 'rgba(255,255,255,0.35)',
   friend: '#45b4ff',
   friendDark: '#1f6fb8',

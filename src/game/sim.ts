@@ -1,5 +1,6 @@
-import { LANES, LANE_W, RUN_SPEED, BULLET_SPEED, MAX_SQUAD, FIRE_RANGE } from './constants';
-import { WEAPONS, RANK_MUL, squadPower } from './balance';
+import { LANES, LANE_W, RUN_SPEED, BULLET_SPEED, MAX_SQUAD, FIRE_RANGE, BARRICADE_GAP } from './constants';
+import { WEAPONS, RANK_MUL, SIDE_MUL, PERKS, squadPower, xpNeed, type PerkId, type PerkInfo } from './balance';
+import { Rng } from './rng';
 import type { LevelDef, GateOp } from './levels';
 
 export interface Input {
@@ -11,6 +12,7 @@ export interface SimConfig {
   startCount: number;
   startWeapon: number;
   dmgMul: number;
+  wallHp: number;
   /** Adaptive easing after repeated losses: scales enemy/boss HP (1 = normal). */
   ease?: number;
 }
@@ -20,8 +22,11 @@ export type GameEvent =
   | { t: 'gateShot'; x: number; z: number }
   | { t: 'hit'; x: number; z: number; kill: boolean; big: boolean }
   | { t: 'squadHit'; x: number; lost: number }
+  | { t: 'leak'; x: number; dmg: number }
   | { t: 'crateHit'; x: number; z: number }
-  | { t: 'crateOpen'; x: number; z: number; kind: 'weapon' | 'rank'; label: string }
+  | { t: 'crateOpen'; x: number; z: number; label: string }
+  | { t: 'levelUp' }
+  | { t: 'perk'; label: string }
   | { t: 'volley'; weapon: number }
   | { t: 'bossHit'; x: number; dmg: number }
   | { t: 'bossArrive' }
@@ -46,17 +51,21 @@ export interface Enemy {
   hp: number;
   maxHp: number;
   power: number;
+  leak: number;
+  xp: number;
   big: boolean;
   chase: boolean;
   speed: number;
   flash: number;
   alive: boolean;
+  passed: boolean; // got past the squad line, heading for the barricade
+  expDps: number;
+  seen: boolean;
   wobble: number;
 }
 export interface Crate {
   z: number;
   lane: number;
-  kind: 'weapon' | 'rank';
   hp: number;
   maxHp: number;
   flash: number;
@@ -67,6 +76,8 @@ export interface Bullet {
   z: number;
   z0: number;
   dmg: number;
+  pierce: number;
+  hit: Enemy[];
   alive: boolean;
 }
 export interface Boss {
@@ -88,7 +99,7 @@ export class Sim {
   t = 0;
   state: SimState = 'playing';
 
-  dist = 0; // squad front position on the track
+  dist = 0;
   speed = RUN_SPEED;
   lane = 1;
   squadX: number = LANES[1];
@@ -99,13 +110,26 @@ export class Sim {
   fireAcc = 0;
   recoil = 0;
 
+  wall: number;
+  wallMax: number;
+  wallFlash = 0;
+  private biteAcc = 0;
+
+  // In-run progression.
+  xp = 0;
+  ups = 0;
+  perks: Record<PerkId, number> = { side: 0, pierce: 0, firerate: 0, damage: 0, recruits: 0, repair: 0, rank: 0, weapon: 0 };
+  /** When set, the game is frozen until the player picks one. */
+  choices: PerkInfo[] | null = null;
+  private rng = new Rng((Math.random() * 1e9) | 0);
+
   gates: Gate[];
   enemies: Enemy[];
   crates: Crate[];
   bullets: Bullet[] = [];
   boss: Boss;
   events: GameEvent[] = [];
-  stats = { kills: 0, gatesTaken: 0, shots: 0 };
+  stats = { kills: 0, leaks: 0, gatesTaken: 0 };
 
   constructor(level: LevelDef, cfg: SimConfig) {
     this.level = level;
@@ -113,28 +137,41 @@ export class Sim {
     const ease = cfg.ease ?? 1;
     this.count = this.peak = cfg.startCount;
     this.weapon = cfg.startWeapon;
-    this.gates = level.gates.map((g) => {
-      const val = g.op === '-' ? -g.v : g.v;
-      return { z: g.z, lane: g.lane, op: g.op, val, cap: Math.abs(g.v) + 12 + level.d, shootable: g.shootable, acc: 0, flash: 0, done: false };
-    });
+    this.wall = this.wallMax = cfg.wallHp;
+    this.gates = level.gates.map((g) => ({
+      z: g.z,
+      lane: g.lane,
+      op: g.op,
+      val: g.op === '-' ? -g.v : g.v,
+      cap: Math.abs(g.v) + 12 + level.d,
+      shootable: g.shootable,
+      acc: 0,
+      flash: 0,
+      done: false,
+    }));
     this.enemies = level.enemies.map((e) => {
       const hp = Math.max(1, Math.round(e.hp * ease));
-      return { z: e.z, x: LANES[e.lane], lane: e.lane, hp, maxHp: hp, power: e.power, big: e.big, chase: e.chase, speed: e.speed, flash: 0, alive: true, wobble: Math.random() * 6 };
+      return { ...e, x: LANES[e.lane], hp, maxHp: hp, flash: 0, alive: true, passed: false, seen: false, wobble: Math.random() * 6 };
     });
-    this.crates = level.crates.map((c) => ({ ...c, maxHp: c.hp, flash: 0, alive: true }));
+    this.crates = level.crates.map((c) => ({ z: c.z, lane: c.lane, hp: c.hp, maxHp: c.hp, flash: 0, alive: true }));
     const bhp = Math.max(10, Math.round(level.boss.hp * ease));
     this.boss = { z: level.boss.z, hp: bhp, maxHp: bhp, speed: level.boss.speed, eat: level.boss.eat, flash: 0, active: false, eatAcc: 0 };
   }
 
-  get weaponInfo() {
-    return WEAPONS[this.weapon];
-  }
   get progress(): number {
     return Math.min(1, this.dist / this.level.length);
   }
+  get xpProgress(): number {
+    return Math.min(1, this.xp / xpNeed(this.ups));
+  }
+  get fireRate(): number {
+    return WEAPONS[this.weapon].rate * (1 + 0.2 * this.perks.firerate);
+  }
+  get volleyDamage(): number {
+    return squadPower(this.count) * WEAPONS[this.weapon].dmg * RANK_MUL[this.rank] * this.cfg.dmgMul * (1 + 0.25 * this.perks.damage);
+  }
   get currentDps(): number {
-    const w = WEAPONS[this.weapon];
-    return squadPower(this.count) * w.rate * w.dmg * RANK_MUL[this.rank] * this.cfg.dmgMul;
+    return this.volleyDamage * this.fireRate;
   }
 
   drainEvents(): GameEvent[] {
@@ -143,7 +180,51 @@ export class Sim {
     return e;
   }
 
+  // ---------- Level-up ----------
+  private offerChoices() {
+    const pool = PERKS.filter((p) => {
+      if (this.perks[p.id] >= p.max) return false;
+      if (p.id === 'repair' && this.wall > this.wallMax * 0.75) return false;
+      if (p.id === 'rank' && this.rank >= RANK_MUL.length - 1) return false;
+      if (p.id === 'weapon' && this.weapon >= WEAPONS.length - 1) return false;
+      return true;
+    });
+    const picks: PerkInfo[] = [];
+    while (picks.length < 3 && pool.length) {
+      const total = pool.reduce((a, p) => a + p.weight, 0);
+      let r = this.rng.next() * total;
+      const idx = pool.findIndex((p) => (r -= p.weight) < 0);
+      picks.push(pool.splice(Math.max(0, idx), 1)[0]);
+    }
+    this.choices = picks;
+    this.events.push({ t: 'levelUp' });
+  }
+
+  choose(i: number) {
+    if (!this.choices) return;
+    const p = this.choices[i] ?? this.choices[0];
+    this.choices = null;
+    this.perks[p.id]++;
+    if (p.id === 'recruits') this.count = Math.min(MAX_SQUAD, this.count + Math.max(4, Math.round(this.count * 0.3)));
+    if (p.id === 'repair') this.wall = Math.min(this.wallMax, this.wall + Math.ceil(this.wallMax * 0.3));
+    if (p.id === 'rank') this.rank = Math.min(RANK_MUL.length - 1, this.rank + 1);
+    if (p.id === 'weapon') this.weapon = Math.min(WEAPONS.length - 1, this.weapon + 1);
+    this.peak = Math.max(this.peak, this.count);
+    this.events.push({ t: 'perk', label: `${p.icon} ${p.title.toUpperCase()}` });
+  }
+
+  private gainXp(n: number) {
+    this.xp += n;
+    if (!this.choices && this.xp >= xpNeed(this.ups)) {
+      this.xp -= xpNeed(this.ups);
+      this.ups++;
+      this.offerChoices();
+    }
+  }
+
+  // ---------- Main step ----------
   step(dt: number, input: Input) {
+    if (this.choices) return; // frozen while choosing
     if (this.state !== 'playing') {
       for (const e of this.enemies) e.wobble += dt * 8;
       this.moveBullets(dt);
@@ -153,11 +234,10 @@ export class Sim {
 
     if (input.lane !== null) this.lane = Math.max(0, Math.min(2, input.lane));
     const tx = LANES[this.lane];
-    const mv = 900 * dt;
+    const mv = 950 * dt;
     this.squadX += Math.max(-mv, Math.min(mv, tx - this.squadX));
     const curLane = this.nearestLane(this.squadX);
 
-    // Running stops at the end of the track; the boss walks in.
     if (this.dist >= this.level.length) {
       this.speed = Math.max(0, this.speed - dt * 400);
       if (!this.boss.active) {
@@ -169,12 +249,11 @@ export class Sim {
     if (this.boss.active) this.boss.z = Math.max(this.dist + 40, this.boss.z - this.boss.speed * dt);
 
     // Fire.
-    const w = WEAPONS[this.weapon];
-    this.fireAcc += dt * w.rate;
+    this.fireAcc += dt * this.fireRate;
     this.recoil = Math.max(0, this.recoil - dt * 10);
     while (this.fireAcc >= 1) {
       this.fireAcc -= 1;
-      this.volley();
+      this.volley(curLane);
     }
     this.moveBullets(dt);
 
@@ -188,33 +267,56 @@ export class Sim {
       if (g.op === '+' || g.op === '-') this.count += Math.round(g.val);
       else if (g.op === 'x') this.count *= g.val;
       else this.count = Math.ceil(this.count / g.val);
-      this.count = Math.min(MAX_SQUAD, this.count);
+      // Gates can hurt a lot, but never wipe the squad on their own — only zombies can.
+      this.count = Math.max(1, Math.min(MAX_SQUAD, this.count));
       this.stats.gatesTaken++;
       const delta = this.count - before;
       this.events.push({ t: 'gate', x: LANES[g.lane], label: gateLabel(g), good: delta >= 0, delta });
     }
 
-    // Enemies.
+    // Enemies: contact with the squad, or slip past to the barricade.
     for (const e of this.enemies) {
       if (!e.alive) continue;
       e.flash = Math.max(0, e.flash - dt * 6);
       e.wobble += dt * 8;
       e.z -= e.speed * dt;
       const ahead = e.z - this.dist;
+      if (ahead > FIRE_RANGE + 400) continue; // far away, nothing to do yet
+      if (!e.seen && ahead < FIRE_RANGE + 60) {
+        // Quiet rubber-banding: if you're behind the expected power curve, zombies come in softer
+        // (never harder) — this breaks the "fewer soldiers → more leaks" death spiral.
+        e.seen = true;
+        const k = Math.max(0.5, Math.min(1, this.currentDps / Math.max(1, e.expDps)));
+        e.hp = e.maxHp = Math.max(1, Math.round(e.hp * k));
+      }
       if (e.chase && ahead < 420 && ahead > 60) {
-        const target = LANES[curLane];
-        e.x += Math.max(-60 * dt, Math.min(60 * dt, target - e.x));
+        e.x += Math.max(-55 * dt, Math.min(55 * dt, LANES[curLane] - e.x));
         e.lane = this.nearestLane(e.x);
       }
-      if (ahead <= 10 && ahead > -30 && Math.abs(e.x - this.squadX) < LANE_W * 0.55) {
+      if (!e.passed && ahead <= 8) {
+        if (Math.abs(e.x - this.squadX) < LANE_W * 0.55) {
+          // Runs into the squad: soldiers block it with their bodies (the barricade is safe),
+          // but you lose firepower. The squad never drops below 1 — only the barricade ends a run.
+          e.alive = false;
+          this.biteAcc += e.power;
+          const lost = Math.min(this.count - 1, Math.floor(this.biteAcc));
+          this.biteAcc -= Math.floor(this.biteAcc);
+          this.count -= lost;
+          this.events.push({ t: 'squadHit', x: e.x, lost });
+          continue;
+        }
+        e.passed = true;
+      }
+      if (e.passed && ahead <= -BARRICADE_GAP) {
         e.alive = false;
-        const lost = Math.min(this.count, e.power);
-        this.count -= e.power;
-        this.events.push({ t: 'squadHit', x: e.x, lost });
-      } else if (ahead < -60) e.alive = false;
+        this.wall -= e.leak;
+        this.wallFlash = 1;
+        this.stats.leaks++;
+        this.events.push({ t: 'leak', x: e.x, dmg: e.leak });
+      }
     }
+    this.wallFlash = Math.max(0, this.wallFlash - dt * 4);
 
-    // Crates passed without being broken are lost.
     for (const c of this.crates) {
       c.flash = Math.max(0, c.flash - dt * 6);
       if (c.alive && c.z < this.dist - 10) c.alive = false;
@@ -224,22 +326,29 @@ export class Sim {
     this.boss.flash = Math.max(0, this.boss.flash - dt * 6);
     if (this.boss.active && this.boss.z <= this.dist + 45) {
       this.boss.eatAcc += this.boss.eat * dt;
-      while (this.boss.eatAcc >= 1 && this.count > 0) {
+      while (this.boss.eatAcc >= 1) {
         this.boss.eatAcc -= 1;
-        this.count--;
-        this.events.push({ t: 'squadHit', x: this.squadX, lost: 1 });
+        if (this.count > 1) {
+          this.count--;
+          this.events.push({ t: 'squadHit', x: this.squadX, lost: 1 });
+        } else {
+          // Nothing left to eat — the boss smashes through to the barricade.
+          this.wall -= 1;
+          this.wallFlash = 1;
+          this.events.push({ t: 'leak', x: this.squadX, dmg: 1 });
+        }
       }
     }
 
     this.peak = Math.max(this.peak, this.count);
-    if (this.enemies.length > 60 && this.enemies.filter((e) => !e.alive).length > 30) this.enemies = this.enemies.filter((e) => e.alive);
+    if (this.enemies.length > 80 && this.t % 1 < dt) this.enemies = this.enemies.filter((e) => e.alive);
 
     if (this.boss.hp <= 0) {
       this.boss.hp = 0;
       this.state = 'won';
       this.events.push({ t: 'win' });
-    } else if (this.count <= 0) {
-      this.count = 0;
+    } else if (this.wall <= 0) {
+      this.wall = 0;
       this.state = 'lost';
       this.events.push({ t: 'lose' });
     }
@@ -251,17 +360,27 @@ export class Sim {
     return best;
   }
 
-  private volley() {
+  private volley(curLane: number) {
     if (this.count <= 0) return;
-    const w = WEAPONS[this.weapon];
-    const total = squadPower(this.count) * w.dmg * RANK_MUL[this.rank] * this.cfg.dmgMul;
+    const total = this.volleyDamage;
     const k = Math.min(this.weapon === 2 ? 7 : 5, Math.ceil(this.count / 4));
     const spread = Math.min(LANE_W * 0.7, 10 + Math.sqrt(this.count) * 8);
+    const pierce = this.perks.pierce;
     for (let i = 0; i < k; i++) {
       const x = this.squadX + (k === 1 ? 0 : (i / (k - 1) - 0.5) * spread) + (Math.random() - 0.5) * 6;
-      this.bullets.push({ x, z: this.dist + 14, z0: this.dist, dmg: total / k, alive: true });
+      this.bullets.push({ x, z: this.dist + 14, z0: this.dist, dmg: total / k, pierce, hit: [], alive: true });
     }
-    this.stats.shots++;
+    // Flank fire: a couple of bullets into each neighbouring lane.
+    const side = SIDE_MUL[this.perks.side];
+    if (side > 0) {
+      for (const l of [curLane - 1, curLane + 1]) {
+        if (l < 0 || l > 2) continue;
+        for (let i = 0; i < 2; i++) {
+          const x = LANES[l] + (i - 0.5) * 24;
+          this.bullets.push({ x, z: this.dist + 14, z0: this.dist, dmg: (total * side) / 2, pierce, hit: [], alive: true });
+        }
+      }
+    }
     this.recoil = 1;
     this.events.push({ t: 'volley', weapon: this.weapon });
   }
@@ -276,13 +395,13 @@ export class Sim {
         continue;
       }
       const lane = this.nearestLane(b.x);
-      // Find the nearest target crossed this step.
       let best: { z: number; kind: 'e' | 'g' | 'c' | 'b'; ref: Enemy | Gate | Crate | null } | null = null;
       for (const e of this.enemies) {
-        if (!e.alive) continue;
+        if (!e.alive || e.passed) continue;
         const r = e.big ? 20 : 10;
         if (Math.abs(e.x - b.x) > r + 14) continue;
         if (e.z - r > b.z || e.z + r < prev) continue;
+        if (b.hit.includes(e)) continue;
         if (!best || e.z < best.z) best = { z: e.z, kind: 'e', ref: e };
       }
       for (const c of this.crates) {
@@ -299,11 +418,21 @@ export class Sim {
         if (this.boss.z - 30 <= b.z && (!best || this.boss.z - 30 < best.z)) best = { z: this.boss.z - 30, kind: 'b', ref: null };
       }
       if (best) {
-        b.alive = false;
-        this.applyHit(best.kind, best.ref, b);
+        if (best.kind === 'e') {
+          const e = best.ref as Enemy;
+          const hpBefore = e.hp;
+          this.applyHit('e', e, b);
+          b.hit.push(e);
+          if (b.pierce > 0) b.pierce--; // piercing: full damage carries on
+          else if (b.dmg > hpBefore) b.dmg -= hpBefore; // overkill carries into the next zombie
+          else b.alive = false;
+        } else {
+          b.alive = false;
+          this.applyHit(best.kind, best.ref, b);
+        }
       } else if (b.z - b.z0 > FIRE_RANGE) b.alive = false;
     }
-    if (this.bullets.length > 80) this.bullets = this.bullets.filter((b) => b.alive);
+    if (this.bullets.length > 120) this.bullets = this.bullets.filter((b) => b.alive);
   }
 
   private applyHit(kind: 'e' | 'g' | 'c' | 'b', ref: Enemy | Gate | Crate | null, b: Bullet) {
@@ -315,6 +444,7 @@ export class Sim {
       if (kill) {
         e.alive = false;
         this.stats.kills++;
+        this.gainXp(e.xp);
       }
       this.events.push({ t: 'hit', x: e.x, z: e.z, kill, big: e.big });
     } else if (kind === 'g') {
@@ -334,15 +464,8 @@ export class Sim {
       c.flash = 1;
       if (c.hp <= 0) {
         c.alive = false;
-        let label: string;
-        if (c.kind === 'weapon') {
-          this.weapon = Math.min(WEAPONS.length - 1, this.weapon + 1);
-          label = WEAPONS[this.weapon].name.toUpperCase() + '!';
-        } else {
-          this.rank = Math.min(RANK_MUL.length - 1, this.rank + 1);
-          label = `RANK ${this.rank + 1}!`;
-        }
-        this.events.push({ t: 'crateOpen', x: LANES[c.lane], z: c.z, kind: c.kind, label });
+        this.weapon = Math.min(WEAPONS.length - 1, this.weapon + 1);
+        this.events.push({ t: 'crateOpen', x: LANES[c.lane], z: c.z, label: WEAPONS[this.weapon].name.toUpperCase() + '!' });
       } else this.events.push({ t: 'crateHit', x: LANES[c.lane], z: c.z });
     } else {
       this.boss.hp -= b.dmg;
