@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d2340" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="Lane Squad — the honest version of the game from the ads: a squad, three lanes, multiplier gates and zombies. No ads, no in-app purchases." />
+    <title>Lane Squad</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <script type="module" crossorigin src="./assets/index-C3HKKV9W.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CXCEqiUR.css">
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud" class="hidden">
+      <div class="hud-left">
+        <button id="btn-pause" class="icon-btn" aria-label="Pause">❚❚</button>
+        <div id="hud-level" class="pill">Level 1</div>
+      </div>
+      <div id="hud-coins" class="pill coin">0</div>
+    </div>
+    <div id="hud-progress" class="hidden"><div></div></div>
+    <div id="hud-xp" class="hidden"><div></div><span>LV 1</span></div>
+    <div id="hud-gear" class="hidden"></div>
+    <div id="intro" class="hidden"></div>
+
+    <div id="levelup" class="hidden"></div>
+    <div id="screen" class="hidden"></div>
+
+  </body>
+</html>
