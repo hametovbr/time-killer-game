@@ -67,7 +67,7 @@ const INTROS: Record<number, string> = {
   6: 'A ⭐ crate promotes your soldiers — more damage',
   7: '÷ gates split your squad. Careful!',
   8: 'Some zombies switch to your lane',
-  10: 'Brutes: lots of HP, they take 6 soldiers',
+  10: 'Brutes: lots of HP, they take a big bite out of your squad',
 };
 
 export const levelType = (n: number): LevelType => (n % 5 === 0 ? 'boss' : 'normal');
@@ -100,8 +100,10 @@ export function generateLevel(n: number): LevelDef {
   const enemies: EnemyDef[] = [];
   const crates: CrateDef[] = [];
   const beats = Math.round(9 + Math.min(9, n * 0.45) + (type === 'boss' ? 2 : 0));
-  const enemyHp = () => Math.max(1, Math.round(expDps() * (0.1 + Math.min(0.08, d * 0.004)) * rng.range(0.8, 1.2)));
+  const enemyHp = () => Math.max(1, Math.round(expDps() * (0.07 + Math.min(0.06, d * 0.003)) * rng.range(0.8, 1.2)));
   const enemySpeed = Math.min(70, 25 + d * 2);
+  // Soldiers a zombie takes on contact: ~5% of the squad you're expected to have here, so a leak is always visible.
+  const bite = (zz: number) => Math.max(1, Math.round(target(zz) * 0.03));
   let z = 520;
   const estLen = 520 + beats * 360;
   const target = (zz: number) => start + (peakT - start) * Math.min(1, zz / estLen);
@@ -158,19 +160,19 @@ export function generateLevel(n: number): LevelDef {
       for (const l of [0, 1, 2]) {
         if (l === lane || rng.chance(0.5)) continue;
         for (let i = 0; i < 2 + Math.floor(d / 6); i++)
-          enemies.push({ z: z + i * 26, lane: l, hp: enemyHp(), power: 1, big: false, chase: false, speed: enemySpeed });
+          enemies.push({ z: z + i * 26, lane: l, hp: enemyHp(), power: bite(z), big: false, chase: false, speed: enemySpeed });
       }
       z += rng.range(320, 400);
     } else {
       const groupLanes = rng.chance(0.3 + Math.min(0.3, d * 0.012)) ? rng.shuffle([0, 1, 2]).slice(0, 2) : [rng.int(0, 2)];
       for (const lane of groupLanes) {
-        const k = Math.min(8, 2 + Math.round(d * 0.18) + rng.int(0, 2));
+        const k = Math.min(6, 2 + Math.round(d * 0.12) + rng.int(0, 2));
         for (let i = 0; i < k; i++) {
           enemies.push({
             z: z + i * 24,
             lane,
             hp: enemyHp(),
-            power: 1,
+            power: bite(z),
             big: false,
             chase: n >= UNLOCK.chasers && rng.chance(Math.min(0.35, 0.1 + d * 0.01)),
             speed: enemySpeed,
@@ -178,7 +180,7 @@ export function generateLevel(n: number): LevelDef {
         }
       }
       if (n >= UNLOCK.big && rng.chance(Math.min(0.6, 0.25 + d * 0.015))) {
-        enemies.push({ z: z + 60, lane: rng.int(0, 2), hp: enemyHp() * 7, power: 6, big: true, chase: false, speed: enemySpeed * 0.6 });
+        enemies.push({ z: z + 60, lane: rng.int(0, 2), hp: enemyHp() * 7, power: bite(z) * 4, big: true, chase: false, speed: enemySpeed * 0.6 });
       }
       z += rng.range(330, 420);
     }

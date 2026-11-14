@@ -195,7 +195,9 @@ function handleEvents(events: GameEvent[], audible: boolean) {
         break;
       case 'squadHit':
         fx.burst(e.x, SQUAD_Y, '#ff6b6b', 6 + e.lost, 130, 2.6);
-        fx.text(e.x + (Math.random() - 0.5) * 30, SQUAD_Y - 30, `-${e.lost}`, '#ff8080', 20);
+        fx.text(e.x + (Math.random() - 0.5) * 30, SQUAD_Y - 30, `-${e.lost}`, '#ff8080', 20 + Math.min(14, e.lost * 2));
+        fx.flash = Math.max(fx.flash, 0.2);
+        fx.flashColor = '#ff2a2a';
         fx.addShake(2 + Math.min(6, e.lost));
         if (audible) {
           sfx.hurt();

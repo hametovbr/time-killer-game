@@ -26,14 +26,14 @@ Platform: browser, mobile portrait first. No ads, no in-app purchases, no timers
 | # | Element | Rule | From level |
 |---|---|---|---|
 | 1 | **+N / ×N** gates (blue) | change the soldier count when passed | 1 |
-| 2 | Zombies | walk towards you; killed by bullets; reaching the squad costs 1 soldier | 1 |
+| 2 | Zombies | walk towards you along a lane; killed by bullets. A zombie that reaches the squad **in your lane** takes `bite` soldiers (~3% of the squad size expected at that point, min 1; shown as `-N` on the zombie). Zombies in other lanes pass by harmlessly — dodging is a valid choice | 1 |
 | 3 | **−N** gates (red) | remove soldiers; 0 soldiers = defeat | 2 |
 | 4 | 🔫 crate | shoot it open → weapon +1 tier (for this run) | 3 |
 | 5 | Shootable gates 🎯 | bullets raise the number on +/− gates (a "−10" can be shot up into a plus) | 4 |
 | 6 | ⭐ crate | soldier rank +1 → damage multiplier | 6 |
 | 7 | **÷2** gates | split the squad | 7 |
 | + | Chasers | switch to your lane | 8 |
-| + | Brutes | lots of HP, take 6 soldiers | 10 |
+| + | Brutes | lots of HP, take 4× bite | 10 |
 | + | ×3 gates | | 12 |
 | ★ | Boss | at the end of every level; eats soldiers on contact; kill it to win | 1 |
 
@@ -59,9 +59,9 @@ The key decision at every moment: **the lane with the best gate vs the lane with
 Pop-up "+12/−8" numbers and a screen flash on gates, particles on hits and kills, hit-stop and screen shake on crates/brutes/victory, a "pop" of the weapon panel on upgrades, a bobbing running squad, a distinct sound per weapon, vibration on Android, and a "reduce screen shake" option.
 
 ## 8. Balance (bot, `npm run sim`)
-- Bot with 0.8 accuracy and expected upgrades: 38/40 levels on the first try.
-- Bot with 0.95 accuracy: 40/40.
-- Without upgrades, levels 10–30: ~9/21 — the meta layer genuinely matters.
+- Bot with 0.8 accuracy and expected upgrades: 31/40 levels on the first try (adaptive easing covers retries).
+- Bot with 0.95 accuracy: 40/40. Bot with 0.6 accuracy, levels 1–20: 16/20.
+- Without upgrades, levels 10–30: ~3/21 — the meta layer genuinely matters.
 
 ## 9. Save and tech
 `localStorage` (`lanesquad.save.v1`), PWA (offline, installable). Vite + TypeScript + Canvas 2D; logic in `src/game/sim.ts` is separate from rendering; `?autoplay` in the URL makes the game play itself (demo).

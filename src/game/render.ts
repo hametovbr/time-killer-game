@@ -238,7 +238,8 @@ export class Renderer {
         c.fillStyle = '#ff5a5a';
         c.fillRect(x - bw / 2, y - r - 9, bw * Math.max(0, e.hp / e.maxHp), 4);
       }
-      if (e.big) this.label(`${e.power}`, x, y - 2, 13);
+      // How many soldiers this zombie takes if it reaches you.
+      if (e.power > 1) this.label(`-${e.power}`, x, y - (e.big ? 2 : 1), e.big ? 13 : 9, '#fff');
     }
   }
 
